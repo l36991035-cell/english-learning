@@ -47,7 +47,7 @@ export default function InputPage() {
 
   const run = async (fn: () => Promise<void>) => {
     setLoading(true);
-    try { await fn(); } catch { setStatus('發生錯誤，請重試'); setLoading(false); }
+    try { await fn(); } catch { setStatus('發生錯誤，請重試'); } finally { setLoading(false); }
   };
 
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
