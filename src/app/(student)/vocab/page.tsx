@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useAllVocab, useDueVocab } from '@/hooks/useVocab';
 import { advanceSrs, resetSrs, deleteVocab, addVocab } from '@/lib/db/vocabulary';
+import { callAI } from '@/lib/ai';
 
 type Tab = 'review' | 'list' | 'add';
 
@@ -26,11 +27,8 @@ export default function VocabPage() {
     if (!nw.trim()) return;
     setLooking(true);
     try {
-      const res = await fetch('/api/claude', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role:'user', content:`Look up "${nw}". JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] }),
-      });
-      const p = JSON.parse((await res.json()).content);
+      const raw = await callAI({ messages: [{ role:'user', content:`Look up "${nw}". JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
+      const p = JSON.parse(raw);
       setNd(p.definition??''); setNp(p.phonetic??''); setNe(p.example??'');
     } catch {} finally { setLooking(false); }
   };

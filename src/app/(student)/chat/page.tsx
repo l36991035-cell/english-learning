@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { callAI as callWorkerAI } from '@/lib/ai';
 
 const TOPICS = ['Daily Life','Travel','Food','Work','Hobbies','News','Culture','Technology'];
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -20,11 +21,7 @@ export default function ChatPage() {
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
   const callAI = async (history: Msg[]) => {
-    const res = await fetch('/api/claude', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'claude-sonnet-4-6', system: SYSTEM(topic || 'General'), messages: history }),
-    });
-    return (await res.json()).content as string;
+    return callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(topic || 'General'), messages: history });
   };
 
   const start = async (t: string) => {

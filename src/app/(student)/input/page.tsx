@@ -2,17 +2,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addArticle } from '@/lib/db/articles';
+import { callAI } from '@/lib/ai';
 import type { ArticleLevel } from '@/types';
 
 type Mode = 'text' | 'photo' | 'url' | 'youtube';
 
 async function ai(prompt: string, imageBase64?: string): Promise<string> {
-  const res = await fetch('/api/claude', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], ...(imageBase64 ? { imageBase64 } : {}) }),
-  });
-  return (await res.json()).content;
+  return callAI({ messages: [{ role: 'user', content: prompt }], ...(imageBase64 ? { imageBase64 } : {}) });
 }
 
 async function processAndSave(rawText: string, router: ReturnType<typeof useRouter>, setStatus: (s: string) => void) {

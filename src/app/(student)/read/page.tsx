@@ -3,6 +3,7 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getArticle } from '@/lib/db/articles';
 import { addVocab, getAllVocab } from '@/lib/db/vocabulary';
+import { callAI } from '@/lib/ai';
 import type { Article } from '@/types';
 
 type Lookup = { definition: string; phonetic: string; example: string };
@@ -30,11 +31,8 @@ function ReadPageInner() {
     if (!sel || sel.length < 2) return;
     setWord(sel); setLookup(null); setLookingUp(true);
     try {
-      const res = await fetch('/api/claude', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: `Look up "${sel}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] }),
-      });
-      setLookup(JSON.parse((await res.json()).content));
+      const raw = await callAI({ messages: [{ role: 'user', content: `Look up "${sel}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
+      setLookup(JSON.parse(raw));
     } catch {
       setLookup({ definition: '查詢失敗', phonetic: '', example: '' });
     } finally {
