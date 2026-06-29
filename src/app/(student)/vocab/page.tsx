@@ -25,13 +25,14 @@ export default function VocabPage() {
   const autoLookup = async () => {
     if (!nw.trim()) return;
     setLooking(true);
-    const res = await fetch('/api/claude', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role:'user', content:`Look up "${nw}". JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] }),
-    });
-    try { const p = JSON.parse((await res.json()).content); setNd(p.definition??''); setNp(p.phonetic??''); setNe(p.example??''); }
-    catch {}
-    setLooking(false);
+    try {
+      const res = await fetch('/api/claude', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role:'user', content:`Look up "${nw}". JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] }),
+      });
+      const p = JSON.parse((await res.json()).content);
+      setNd(p.definition??''); setNp(p.phonetic??''); setNe(p.example??'');
+    } catch {} finally { setLooking(false); }
   };
 
   const saveNew = async () => {
