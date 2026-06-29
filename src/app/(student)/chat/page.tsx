@@ -29,19 +29,21 @@ export default function ChatPage() {
 
   const start = async (t: string) => {
     setTopic(t); setLoading(true);
-    const init: Msg = { role: 'user', content: "Hello! Let's start." };
-    const reply = await callAI([init]);
-    setMsgs([init, { role: 'assistant', content: reply }]);
-    setLoading(false);
+    try {
+      const init: Msg = { role: 'user', content: "Hello! Let's start." };
+      const reply = await callAI([init]);
+      setMsgs([init, { role: 'assistant', content: reply }]);
+    } catch { setTopic(''); } finally { setLoading(false); }
   };
 
   const send = async () => {
     if (!input.trim() || loading) return;
     const next: Msg[] = [...msgs, { role: 'user', content: input.trim() }];
     setMsgs(next); setInput(''); setLoading(true);
-    const reply = await callAI(next);
-    setMsgs([...next, { role: 'assistant', content: reply }]);
-    setLoading(false);
+    try {
+      const reply = await callAI(next);
+      setMsgs([...next, { role: 'assistant', content: reply }]);
+    } catch {} finally { setLoading(false); }
   };
 
   if (!topic) return (
