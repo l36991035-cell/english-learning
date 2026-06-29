@@ -14,23 +14,24 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   const path = usePathname();
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
-      <main style={{ paddingBottom: 64 }}>{children}</main>
       <nav style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, height: 64,
-        background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)',
+        position: 'sticky', top: 0, zIndex: 50, height: 52,
+        background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)',
         display: 'flex',
       }}>
         {TABS.map(t => (
           <Link key={t.href} href={t.href} style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 12, fontWeight: 500, textDecoration: 'none',
+            fontSize: 13, fontWeight: 500, textDecoration: 'none',
             color: path.startsWith(t.href) ? 'var(--accent)' : 'var(--text-muted)',
+            borderBottom: path.startsWith(t.href) ? '2px solid var(--accent)' : '2px solid transparent',
             transition: 'color 0.15s',
           }}>
             {t.label}
           </Link>
         ))}
       </nav>
+      <main>{children}</main>
     </div>
   );
 }

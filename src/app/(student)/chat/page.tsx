@@ -61,7 +61,7 @@ export default function ChatPage() {
   );
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100vh', paddingBottom:64 }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'calc(100vh - 52px)' }}>
       <div style={{ padding:'14px 20px', background:'var(--bg-secondary)', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <div>
           <p style={{ margin:0, fontWeight:600 }}>{topic}</p>
@@ -86,7 +86,7 @@ export default function ChatPage() {
         <div ref={bottom} />
       </div>
 
-      <div style={{ padding:'10px 16px', background:'var(--bg-secondary)', borderTop:'1px solid var(--border)', display:'flex', gap:8, position:'fixed', bottom:64, left:0, right:0 }}>
+      <div style={{ padding:'10px 16px', background:'var(--bg-secondary)', borderTop:'1px solid var(--border)', display:'flex', gap:8, position:'fixed', bottom:0, left:0, right:0 }}>
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key==='Enter' && !e.shiftKey && send()}
           placeholder="Type in English..." disabled={loading}
           style={{ flex:1, padding:'10px 14px', background:'var(--bg-primary)', border:'1px solid var(--border)', borderRadius:'var(--radius)', color:'var(--text-primary)', fontFamily:'inherit', fontSize:15 }} />
