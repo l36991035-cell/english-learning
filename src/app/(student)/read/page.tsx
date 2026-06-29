@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getArticle } from '@/lib/db/articles';
 import { addVocab, getAllVocab } from '@/lib/db/vocabulary';
@@ -7,7 +7,7 @@ import type { Article } from '@/types';
 
 type Lookup = { definition: string; phonetic: string; example: string };
 
-export default function ReadPage() {
+function ReadPageInner() {
   const params = useSearchParams();
   const router = useRouter();
   const id = Number(params.get('id'));
@@ -29,13 +29,17 @@ export default function ReadPage() {
     const sel = window.getSelection()?.toString().trim();
     if (!sel || sel.length < 2) return;
     setWord(sel); setLookup(null); setLookingUp(true);
-    const res = await fetch('/api/claude', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: [{ role: 'user', content: `Look up "${sel}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] }),
-    });
-    try { setLookup(JSON.parse((await res.json()).content)); }
-    catch { setLookup({ definition: '查詢失敗', phonetic: '', example: '' }); }
-    setLookingUp(false);
+    try {
+      const res = await fetch('/api/claude', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: 'user', content: `Look up "${sel}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] }),
+      });
+      setLookup(JSON.parse((await res.json()).content));
+    } catch {
+      setLookup({ definition: '查詢失敗', phonetic: '', example: '' });
+    } finally {
+      setLookingUp(false);
+    }
   }, []);
 
   const saveWord = async () => {
@@ -96,5 +100,13 @@ export default function ReadPage() {
 
       {toast && <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: 'var(--accent)', color: '#fff', padding: '10px 20px', borderRadius: 'var(--radius)', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>{toast}</div>}
     </div>
+  );
+}
+
+export default function ReadPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24, color: 'var(--text-muted)' }}>載入中...</div>}>
+      <ReadPageInner />
+    </Suspense>
   );
 }
