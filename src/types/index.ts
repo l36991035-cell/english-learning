@@ -24,3 +24,9 @@ export interface VocabEntry {
   nextReview: number;
   createdAt: number;
 }
+
+export interface Student {
+  id: string;
+  name: string;
+  createdAt: number;
+}
