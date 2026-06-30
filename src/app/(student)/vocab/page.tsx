@@ -2,11 +2,13 @@
 import { useState } from 'react';
 import { useAllVocab, useDueVocab } from '@/hooks/useVocab';
 import { advanceSrs, resetSrs, deleteVocab, addVocab } from '@/lib/db/vocabulary';
+import { useStudent } from '@/context/StudentContext';
 import { callAI } from '@/lib/ai';
 
 type Tab = 'review' | 'list' | 'add';
 
 export default function VocabPage() {
+  const { db } = useStudent();
   const [tab, setTab] = useState<Tab>('review');
   const all = useAllVocab() ?? [];
   const due = useDueVocab() ?? [];
@@ -20,8 +22,8 @@ export default function VocabPage() {
 
   const cur = due[idx];
 
-  const know = async () => { if (cur?.id) { await advanceSrs(cur.id); setFlipped(false); setIdx(i => i+1); }};
-  const forget = async () => { if (cur?.id) { await resetSrs(cur.id); setFlipped(false); setIdx(i => i+1); }};
+  const know = async () => { if (cur?.id && db) { await advanceSrs(db, cur.id); setFlipped(false); setIdx(i => i+1); }};
+  const forget = async () => { if (cur?.id && db) { await resetSrs(db, cur.id); setFlipped(false); setIdx(i => i+1); }};
 
   const autoLookup = async () => {
     if (!nw.trim()) return;
@@ -34,8 +36,8 @@ export default function VocabPage() {
   };
 
   const saveNew = async () => {
-    if (!nw.trim()) return;
-    await addVocab({ word:nw, definition:nd, phonetic:np, example:ne, srsLevel:0, nextReview:Date.now(), createdAt:Date.now() });
+    if (!nw.trim() || !db) return;
+    await addVocab(db, { word:nw, definition:nd, phonetic:np, example:ne, srsLevel:0, nextReview:Date.now(), createdAt:Date.now() });
     setNw(''); setNd(''); setNp(''); setNe('');
   };
 
@@ -90,7 +92,7 @@ export default function VocabPage() {
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <span style={{ fontSize:11, color:'var(--accent)', background:'var(--bg-tertiary)', padding:'2px 8px', borderRadius:4 }}>Lv.{v.srsLevel}</span>
-                <button onClick={() => v.id && deleteVocab(v.id)} style={{ background:'none', border:'none', color:'var(--text-subtle)', cursor:'pointer', fontSize:16 }}>✕</button>
+                <button onClick={() => v.id && db && deleteVocab(db, v.id)} style={{ background:'none', border:'none', color:'var(--text-subtle)', cursor:'pointer', fontSize:16 }}>✕</button>
               </div>
             </div>
           ))}

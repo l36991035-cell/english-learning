@@ -3,6 +3,7 @@ import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getArticle } from '@/lib/db/articles';
 import { addVocab, getAllVocab } from '@/lib/db/vocabulary';
+import { useStudent } from '@/context/StudentContext';
 import { callAI } from '@/lib/ai';
 import type { Article } from '@/types';
 
@@ -11,6 +12,7 @@ type Lookup = { definition: string; phonetic: string; example: string };
 function ReadPageInner() {
   const params = useSearchParams();
   const router = useRouter();
+  const { db } = useStudent();
   const id = Number(params.get('id'));
   const [article, setArticle] = useState<Article | null>(null);
   const [shown, setShown] = useState<boolean[]>([]);
@@ -21,10 +23,10 @@ function ReadPageInner() {
   const [toast, setToast] = useState('');
 
   useEffect(() => {
-    if (!id) return;
-    getArticle(id).then(a => { if (a) { setArticle(a); setShown(new Array(a.sentences.length).fill(false)); }});
-    getAllVocab().then(v => setSaved(new Set(v.map(e => e.word.toLowerCase()))));
-  }, [id]);
+    if (!id || !db) return;
+    getArticle(db, id).then(a => { if (a) { setArticle(a); setShown(new Array(a.sentences.length).fill(false)); }});
+    getAllVocab(db).then(v => setSaved(new Set(v.map(e => e.word.toLowerCase()))));
+  }, [id, db]);
 
   const handleSelect = useCallback(async () => {
     const sel = window.getSelection()?.toString().trim();
@@ -41,8 +43,8 @@ function ReadPageInner() {
   }, []);
 
   const saveWord = async () => {
-    if (!word || !lookup) return;
-    await addVocab({ word, ...lookup, srsLevel: 0, nextReview: Date.now(), createdAt: Date.now() });
+    if (!word || !lookup || !db) return;
+    await addVocab(db, { word, ...lookup, srsLevel: 0, nextReview: Date.now(), createdAt: Date.now() });
     setSaved(p => new Set([...p, word.toLowerCase()]));
     setToast(`已加入「${word}」`);
     setTimeout(() => setToast(''), 2000);

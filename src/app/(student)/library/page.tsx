@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useArticles } from '@/hooks/useArticles';
 import { deleteArticle } from '@/lib/db/articles';
+import { useStudent } from '@/context/StudentContext';
 import type { ArticleLevel } from '@/types';
 
 const LABEL: Record<ArticleLevel, string> = { beginner:'初級', intermediate:'中級', advanced:'高級' };
@@ -10,6 +11,7 @@ const COLOR: Record<ArticleLevel, string> = { beginner:'#10b981', intermediate:'
 
 export default function LibraryPage() {
   const router = useRouter();
+  const { db } = useStudent();
   const articles = useArticles() ?? [];
   const [filter, setFilter] = useState<ArticleLevel | 'all'>('all');
   const shown = filter === 'all' ? articles : articles.filter(a => a.level === filter);
@@ -47,7 +49,7 @@ export default function LibraryPage() {
                 <h3 style={{ fontSize: 16, margin: '0 0 4px', fontFamily: 'Playfair Display, serif' }}>{a.title}</h3>
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>{a.topic} · {a.wordCount} 字</p>
               </div>
-              <button onClick={e => { e.stopPropagation(); deleteArticle(a.id!); }}
+              <button onClick={e => { e.stopPropagation(); db && deleteArticle(db, a.id!); }}
                 style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 18 }}>✕</button>
             </div>
           </div>

@@ -2,8 +2,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addArticle } from '@/lib/db/articles';
+import { useStudent } from '@/context/StudentContext';
 import { callAI } from '@/lib/ai';
 import type { ArticleLevel } from '@/types';
+import type { AppDb } from '@/lib/db';
 
 type Mode = 'text' | 'photo' | 'url' | 'youtube';
 
@@ -11,7 +13,7 @@ async function ai(prompt: string, imageBase64?: string): Promise<string> {
   return callAI({ messages: [{ role: 'user', content: prompt }], ...(imageBase64 ? { imageBase64 } : {}) });
 }
 
-async function processAndSave(rawText: string, router: ReturnType<typeof useRouter>, setStatus: (s: string) => void) {
+async function processAndSave(db: AppDb, rawText: string, router: ReturnType<typeof useRouter>, setStatus: (s: string) => void) {
   setStatus('分析文章...');
   const metaRaw = await ai(`Analyze this English article and return JSON only (no markdown):
 {"title":"...","level":"beginner|intermediate|advanced","topic":"中文主題"}
@@ -25,7 +27,7 @@ Article: ${rawText.slice(0, 2000)}`);
   const transRaw = await ai(`Translate each English sentence to Traditional Chinese. Return JSON array only, same order.\n${JSON.stringify(sentences)}`);
   const translations: string[] = (() => { try { const p = JSON.parse(transRaw); return Array.isArray(p) ? p : []; } catch { return []; } })();
 
-  await addArticle({
+  await addArticle(db, {
     title: meta.title, level: meta.level as ArticleLevel, topic: meta.topic,
     text: rawText, sentences, translations,
     wordCount: rawText.split(/\s+/).length, createdAt: Date.now(),
@@ -35,6 +37,7 @@ Article: ${rawText.slice(0, 2000)}`);
 
 export default function InputPage() {
   const router = useRouter();
+  const { db } = useStudent();
   const [mode, setMode] = useState<Mode>('text');
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
@@ -48,13 +51,13 @@ export default function InputPage() {
 
   const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !db) return;
     const reader = new FileReader();
     reader.onload = () => run(async () => {
       const b64 = (reader.result as string).split(',')[1];
       setStatus('OCR 識別中...');
       const extracted = await ai('Extract all English text from this image. Return text only.', b64);
-      await processAndSave(extracted, router, setStatus);
+      await processAndSave(db, extracted, router, setStatus);
     });
     reader.readAsDataURL(file);
   };
@@ -87,7 +90,7 @@ export default function InputPage() {
       {mode === 'text' && <>
         <textarea value={text} onChange={e => setText(e.target.value)} placeholder="貼上英文文章..."
           style={{ ...inp, minHeight: 200, resize: 'vertical' }} />
-        <button onClick={() => run(() => processAndSave(text, router, setStatus))}
+        <button onClick={() => db && run(() => processAndSave(db, text, router, setStatus))}
           disabled={loading || !text.trim()} style={{ ...s(true), marginTop: 12, width: '100%', padding: 12 }}>
           {loading ? status : '分析並儲存'}
         </button>
@@ -108,13 +111,13 @@ export default function InputPage() {
           placeholder={mode === 'url' ? 'https://...' : 'https://youtube.com/watch?v=...'}
           style={inp} />
         <button
-          onClick={() => run(async () => {
+          onClick={() => db && run(async () => {
             setStatus(mode === 'url' ? '抓取文章...' : '擷取字幕...');
             const prompt = mode === 'url'
               ? `Fetch and extract the main article text from: ${url}. Return body text only, no HTML.`
               : `Extract and clean English transcript from YouTube: ${url}. Remove timestamps, speaker labels, non-English text.`;
             const content = await ai(prompt);
-            await processAndSave(content, router, setStatus);
+            await processAndSave(db, content, router, setStatus);
           })}
           disabled={loading || !url.trim()} style={{ ...s(true), marginTop: 12, width: '100%', padding: 12 }}>
           {loading ? status : '擷取並儲存'}
