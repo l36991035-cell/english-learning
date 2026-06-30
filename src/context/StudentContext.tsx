@@ -13,6 +13,7 @@ import {
 interface StudentContextValue {
   currentStudent: Student | null;
   db: AppDb | null;
+  initialized: boolean;
   students: Student[];
   selectStudent: (id: string) => void;
   createStudent: (name: string) => Student;
@@ -23,6 +24,7 @@ const StudentContext = createContext<StudentContextValue | null>(null);
 export function StudentProvider({ children }: { children: ReactNode }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
     const list = getStudents();
@@ -32,23 +34,26 @@ export function StudentProvider({ children }: { children: ReactNode }) {
       const found = list.find(s => s.id === id) ?? null;
       setCurrentStudent(found);
     }
+    setInitialized(true);
   }, []);
 
   const selectStudent = useCallback((id: string) => {
     const found = students.find(s => s.id === id) ?? null;
-    setCurrentStudentId(id);
+    if (found) setCurrentStudentId(id);
     setCurrentStudent(found);
   }, [students]);
 
   const createStudent = useCallback((name: string): Student => {
     const student = addStudent(name);
     setStudents(prev => [...prev, student]);
+    setCurrentStudentId(student.id);
+    setCurrentStudent(student);
     return student;
   }, []);
 
   const db = currentStudent ? getDb(currentStudent.id) : null;
 
-  const value = useMemo(() => ({ currentStudent, db, students, selectStudent, createStudent }), [currentStudent, db, students, selectStudent, createStudent]);
+  const value = useMemo(() => ({ currentStudent, db, initialized, students, selectStudent, createStudent }), [currentStudent, db, initialized, students, selectStudent, createStudent]);
 
   return (
     <StudentContext.Provider value={value}>

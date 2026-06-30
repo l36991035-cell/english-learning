@@ -17,10 +17,10 @@ export default function SelectStudentPage() {
   const handleAdd = () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    const student = createStudent(trimmed);
+    createStudent(trimmed);
     setName('');
     setAdding(false);
-    enter(student.id);
+    router.push('/library');
   };
 
   const card = {

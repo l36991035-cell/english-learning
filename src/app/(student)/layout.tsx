@@ -15,15 +15,15 @@ const TABS = [
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
-  const { currentStudent } = useStudent();
+  const { currentStudent, initialized } = useStudent();
 
   useEffect(() => {
-    if (currentStudent === null) {
+    if (initialized && currentStudent === null) {
       router.replace('/');
     }
-  }, [currentStudent, router]);
+  }, [initialized, currentStudent, router]);
 
-  if (!currentStudent) return null;
+  if (!initialized || !currentStudent) return null;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-primary)' }}>
