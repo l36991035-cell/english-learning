@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import type { Student } from '@/types';
 import type { AppDb } from '@/lib/db';
 import { getDb } from '@/lib/db';
@@ -34,22 +34,24 @@ export function StudentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const selectStudent = (id: string) => {
+  const selectStudent = useCallback((id: string) => {
     const found = students.find(s => s.id === id) ?? null;
     setCurrentStudentId(id);
     setCurrentStudent(found);
-  };
+  }, [students]);
 
-  const createStudent = (name: string): Student => {
+  const createStudent = useCallback((name: string): Student => {
     const student = addStudent(name);
     setStudents(prev => [...prev, student]);
     return student;
-  };
+  }, []);
 
   const db = currentStudent ? getDb(currentStudent.id) : null;
 
+  const value = useMemo(() => ({ currentStudent, db, students, selectStudent, createStudent }), [currentStudent, db, students, selectStudent, createStudent]);
+
   return (
-    <StudentContext.Provider value={{ currentStudent, db, students, selectStudent, createStudent }}>
+    <StudentContext.Provider value={value}>
       {children}
     </StudentContext.Provider>
   );
