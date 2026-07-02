@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { getArticle, updateArticle } from '@/lib/db/articles';
 import { addVocab, getAllVocab } from '@/lib/db/vocabulary';
 import { useStudent } from '@/context/StudentContext';
-import { callAI } from '@/lib/ai';
+import { callAI, extractJSON } from '@/lib/ai';
 import type { Article } from '@/types';
 
 type Lookup = { definition: string; phonetic: string; example: string };
@@ -48,7 +48,7 @@ function ReadPageInner() {
           content: `將以下英文句子逐句翻譯成繁體中文，只回傳 JSON 陣列，順序相同。\n${JSON.stringify(article.sentences)}`,
         }],
       });
-      const parsed: string[] = JSON.parse(raw);
+      const parsed = extractJSON<string[]>(raw);
       const translations = Array.isArray(parsed) ? parsed : [];
       await updateArticle(db, article.id!, { translations });
       setArticle(prev => prev ? { ...prev, translations } : prev);
@@ -65,7 +65,7 @@ function ReadPageInner() {
     setWord(sel); setLookup(null); setLookingUp(true);
     try {
       const raw = await callAI({ messages: [{ role: 'user', content: `Look up "${sel}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
-      setLookup(JSON.parse(raw));
+      setLookup(extractJSON<Lookup>(raw));
     } catch {
       setLookup({ definition: '查詢失敗', phonetic: '', example: '' });
     } finally {
@@ -82,7 +82,7 @@ function ReadPageInner() {
           content: `分析此英文句子的句型結構，用繁體中文說明。只回傳 JSON：{"pattern":"句型（例如 S+V+O）","breakdown":"主詞：... | 動詞：... | 受詞：... 等詳細說明"}\n句子："${sentence}"`,
         }],
       });
-      setAnalyses(p => ({ ...p, [i]: JSON.parse(raw) }));
+      setAnalyses(p => ({ ...p, [i]: extractJSON<Analysis>(raw) }));
     } catch {
       setAnalyses(p => ({ ...p, [i]: { pattern: '解析失敗', breakdown: '請重試' } }));
     } finally {

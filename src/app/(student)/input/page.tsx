@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addArticle } from '@/lib/db/articles';
 import { useStudent } from '@/context/StudentContext';
-import { callAI } from '@/lib/ai';
+import { callAI, extractJSON } from '@/lib/ai';
 import type { ArticleLevel } from '@/types';
 import type { AppDb } from '@/lib/db';
 
@@ -18,14 +18,14 @@ async function processAndSave(db: AppDb, rawText: string, router: ReturnType<typ
   const metaRaw = await ai(`Analyze this English article and return JSON only (no markdown):
 {"title":"...","level":"beginner|intermediate|advanced","topic":"中文主題"}
 Article: ${rawText.slice(0, 2000)}`);
-  const meta = (() => { try { return JSON.parse(metaRaw); } catch { return { title: 'Untitled', level: 'intermediate', topic: '一般' }; } })();
+  const meta = (() => { try { return extractJSON(metaRaw) as { title: string; level: string; topic: string }; } catch { return { title: 'Untitled', level: 'intermediate', topic: '一般' }; } })();
 
   setStatus('切分句子...');
   const sentences = rawText.match(/[^.!?]+[.!?]+/g)?.map(s => s.trim()).filter(Boolean) ?? [rawText];
 
   setStatus('翻譯中...');
   const transRaw = await ai(`Translate each English sentence to Traditional Chinese. Return JSON array only, same order.\n${JSON.stringify(sentences)}`);
-  const translations: string[] = (() => { try { const p = JSON.parse(transRaw); return Array.isArray(p) ? p : []; } catch { return []; } })();
+  const translations: string[] = (() => { try { const p = extractJSON(transRaw); return Array.isArray(p) ? p : []; } catch { return []; } })();
 
   await addArticle(db, {
     title: meta.title, level: meta.level as ArticleLevel, topic: meta.topic,
