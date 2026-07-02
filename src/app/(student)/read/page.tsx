@@ -8,6 +8,8 @@ import { callAI } from '@/lib/ai';
 import type { Article } from '@/types';
 
 type Lookup = { definition: string; phonetic: string; example: string };
+type Analysis = { pattern: string; breakdown: string };
+type ViewMode = 'full' | 'study';
 
 function ReadPageInner() {
   const params = useSearchParams();
@@ -15,16 +17,22 @@ function ReadPageInner() {
   const { db } = useStudent();
   const id = Number(params.get('id'));
   const [article, setArticle] = useState<Article | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('full');
   const [shown, setShown] = useState<boolean[]>([]);
+  const [showAllTrans, setShowAllTrans] = useState(false);
   const [word, setWord] = useState('');
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState('');
+  const [analyses, setAnalyses] = useState<Record<number, Analysis>>({});
+  const [analyzing, setAnalyzing] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (!id || !db) return;
-    getArticle(db, id).then(a => { if (a) { setArticle(a); setShown(new Array(a.sentences.length).fill(false)); }});
+    getArticle(db, id).then(a => {
+      if (a) { setArticle(a); setShown(new Array(a.sentences.length).fill(false)); }
+    });
     getAllVocab(db).then(v => setSaved(new Set(v.map(e => e.word.toLowerCase()))));
   }, [id, db]);
 
@@ -42,6 +50,29 @@ function ReadPageInner() {
     }
   }, []);
 
+  const analyzeSentence = async (i: number, sentence: string) => {
+    setAnalyzing(p => ({ ...p, [i]: true }));
+    try {
+      const raw = await callAI({
+        messages: [{
+          role: 'user',
+          content: `分析這個英文句子的句型結構，用繁體中文說明。只回傳 JSON：{"pattern":"句型（例如 S+V+O）","breakdown":"主詞：... | 動詞：... | 受詞：... 等詳細說明"}\n句子："${sentence}"`,
+        }],
+      });
+      setAnalyses(p => ({ ...p, [i]: JSON.parse(raw) }));
+    } catch {
+      setAnalyses(p => ({ ...p, [i]: { pattern: '解析失敗', breakdown: '請重試' } }));
+    } finally {
+      setAnalyzing(p => ({ ...p, [i]: false }));
+    }
+  };
+
+  const toggleAllTrans = () => {
+    const next = !showAllTrans;
+    setShowAllTrans(next);
+    setShown(new Array(article?.sentences.length ?? 0).fill(next));
+  };
+
   const saveWord = async () => {
     if (!word || !lookup || !db) return;
     await addVocab(db, { word, ...lookup, srsLevel: 0, nextReview: Date.now(), createdAt: Date.now() });
@@ -52,36 +83,117 @@ function ReadPageInner() {
 
   if (!article) return <div style={{ padding: 24, color: 'var(--text-muted)' }}>載入中...</div>;
 
+  const modeBtn = (active: boolean) => ({
+    padding: '6px 18px', borderRadius: 999, fontSize: 13, fontWeight: 500,
+    border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+    background: active ? 'var(--accent)' : 'var(--bg-tertiary)',
+    color: active ? '#fff' : 'var(--text-muted)',
+  });
+
+  const actionBtn = (active = false) => ({
+    background: 'none', border: 'none', cursor: 'pointer',
+    color: active ? 'var(--accent)' : 'var(--text-subtle)',
+    fontSize: 13, fontWeight: 600, padding: '2px 4px',
+  });
+
   return (
     <div style={{ padding: 20, maxWidth: 640, margin: '0 auto' }}>
-      <button onClick={() => router.push('/library')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', marginBottom: 16, padding: 0 }}>← 返回</button>
+      <button onClick={() => router.push('/library')}
+        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', marginBottom: 16, padding: 0 }}>
+        ← 返回
+      </button>
       <h1 style={{ fontSize: 22, marginBottom: 4, fontFamily: 'Playfair Display, serif' }}>{article.title}</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 24 }}>{article.topic} · {article.wordCount} 字</p>
+      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>{article.topic} · {article.wordCount} 字</p>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} onMouseUp={handleSelect}>
-        {article.sentences.map((s, i) => (
-          <div key={i} style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', padding: '12px 14px', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-              <p style={{ margin: 0, lineHeight: 1.7, fontSize: 15 }}>{s}</p>
-              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button onClick={() => { const u = new SpeechSynthesisUtterance(s); u.lang='en-US'; speechSynthesis.speak(u); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-subtle)', fontSize: 14 }}>▶</button>
-                <button onClick={() => setShown(p => p.map((v,j) => j===i ? !v : v))}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: shown[i] ? 'var(--accent)' : 'var(--text-subtle)', fontSize: 13, fontWeight: 600 }}>中</button>
-              </div>
-            </div>
-            {shown[i] && <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-              {article.translations[i] || '—'}
-            </p>}
-          </div>
-        ))}
+      {/* 模式切換 */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        <button onClick={() => setViewMode('full')} style={modeBtn(viewMode === 'full')}>全文閱讀</button>
+        <button onClick={() => setViewMode('study')} style={modeBtn(viewMode === 'study')}>逐句學習</button>
       </div>
 
+      {/* 全文閱讀模式 */}
+      {viewMode === 'full' && (
+        <div onMouseUp={handleSelect}>
+          <p style={{ lineHeight: 1.9, fontSize: 15, whiteSpace: 'pre-wrap', margin: '0 0 20px' }}>
+            {article.text}
+          </p>
+          {article.translations.length > 0 && (
+            <>
+              <button onClick={() => setShowAllTrans(p => !p)} style={{
+                padding: '8px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+                cursor: 'pointer', fontSize: 13, fontWeight: 500, marginBottom: 16,
+                background: showAllTrans ? 'var(--accent)' : 'var(--bg-secondary)',
+                color: showAllTrans ? '#fff' : 'var(--text-muted)',
+              }}>
+                {showAllTrans ? '隱藏中文翻譯' : '顯示中文翻譯'}
+              </button>
+              {showAllTrans && (
+                <div style={{ borderLeft: '3px solid var(--accent)', paddingLeft: 16, lineHeight: 1.9, fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>
+                  {article.translations.join(' ')}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* 逐句學習模式 */}
+      {viewMode === 'study' && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button onClick={toggleAllTrans} style={{
+              padding: '5px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500,
+              background: showAllTrans ? 'var(--accent)' : 'var(--bg-tertiary)',
+              color: showAllTrans ? '#fff' : 'var(--text-muted)',
+            }}>
+              {showAllTrans ? '收起翻譯' : '全部翻譯'}
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} onMouseUp={handleSelect}>
+            {article.sentences.map((s, i) => (
+              <div key={i} style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', padding: '12px 14px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <p style={{ margin: 0, lineHeight: 1.7, fontSize: 15, flex: 1 }}>{s}</p>
+                  <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'flex-start' }}>
+                    <button onClick={() => { const u = new SpeechSynthesisUtterance(s); u.lang = 'en-US'; speechSynthesis.speak(u); }}
+                      style={{ ...actionBtn(), fontSize: 14 }}>▶</button>
+                    <button onClick={() => setShown(p => p.map((v, j) => j === i ? !v : v))}
+                      style={actionBtn(shown[i])}>中</button>
+                    <button onClick={() => analyzeSentence(i, s)} disabled={analyzing[i]}
+                      style={{ ...actionBtn(!!analyses[i]), fontSize: 12 }}>
+                      {analyzing[i] ? '…' : '解析'}
+                    </button>
+                  </div>
+                </div>
+
+                {shown[i] && (
+                  <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                    {article.translations[i] || '（尚無翻譯）'}
+                  </p>
+                )}
+
+                {analyses[i] && (
+                  <div style={{ margin: '8px 0 0', fontSize: 12, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                    <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{analyses[i].pattern}</span>
+                    <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+                      {analyses[i].breakdown}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* 單字查詢彈窗 */}
       {(lookup || lookingUp) && (
         <div style={{ position: 'fixed', bottom: 80, left: 16, right: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
           {lookingUp
             ? <p style={{ color: 'var(--text-muted)', margin: 0 }}>查詢「{word}」...</p>
-            : lookup && <>
+            : lookup && (
+              <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div>
                     <strong style={{ fontSize: 18 }}>{word}</strong>
@@ -94,11 +206,16 @@ function ReadPageInner() {
                 </div>
                 <p style={{ margin: '0 0 4px', fontSize: 14 }}>{lookup.definition}</p>
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>{lookup.example}</p>
-              </>}
+              </>
+            )}
         </div>
       )}
 
-      {toast && <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: 'var(--accent)', color: '#fff', padding: '10px 20px', borderRadius: 'var(--radius)', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>{toast}</div>}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: 'var(--accent)', color: '#fff', padding: '10px 20px', borderRadius: 'var(--radius)', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

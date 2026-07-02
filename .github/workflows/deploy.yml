@@ -26,7 +26,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          NEXT_PUBLIC_AI_WORKER_URL: ${{ secrets.AI_WORKER_URL }}
+          NEXT_PUBLIC_AI_WORKER_URL: https://english-learning-api.l36991035.workers.dev
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./out
