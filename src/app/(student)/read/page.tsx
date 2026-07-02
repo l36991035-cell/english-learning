@@ -59,19 +59,29 @@ function ReadPageInner() {
     }
   };
 
-  const handleSelect = useCallback(async () => {
-    const sel = window.getSelection()?.toString().trim();
-    if (!sel || sel.length < 2) return;
-    setWord(sel); setLookup(null); setLookingUp(true);
+  const lookupWord = useCallback(async (raw: string) => {
+    const w = raw.replace(/[^a-zA-Z'’-]/g, '').trim();
+    if (!w || w.length < 2) return;
+    setWord(w); setLookup(null); setLookingUp(true);
     try {
-      const raw = await callAI({ messages: [{ role: 'user', content: `Look up "${sel}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
-      setLookup(extractJSON<Lookup>(raw));
+      const result = await callAI({ messages: [{ role: 'user', content: `Look up "${w}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
+      setLookup(extractJSON<Lookup>(result));
     } catch {
       setLookup({ definition: '查詢失敗', phonetic: '', example: '' });
     } finally {
       setLookingUp(false);
     }
   }, []);
+
+  const renderWords = (text: string) =>
+    text.split(/(\s+)/).map((token, i) =>
+      /^\s+$/.test(token) ? token :
+      <span key={i} onClick={() => lookupWord(token)}
+        style={{ cursor: 'pointer', borderRadius: 2, padding: '0 1px' }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      >{token}</span>
+    );
 
   const analyzeSentence = async (i: number, sentence: string) => {
     setAnalyzing(p => ({ ...p, [i]: true }));
@@ -147,9 +157,9 @@ function ReadPageInner() {
 
       {/* ── 全文閱讀 ── */}
       {viewMode === 'full' && (
-        <div onMouseUp={handleSelect}>
+        <div>
           <p style={{ lineHeight: 1.9, fontSize: 15, whiteSpace: 'pre-wrap', margin: '0 0 20px' }}>
-            {article.text}
+            {renderWords(article.text)}
           </p>
 
           {/* 翻譯按鈕 */}
@@ -203,11 +213,11 @@ function ReadPageInner() {
             )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} onMouseUp={handleSelect}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {article.sentences.map((s, i) => (
               <div key={i} style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', padding: '12px 14px', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                  <p style={{ margin: 0, lineHeight: 1.7, fontSize: 15, flex: 1 }}>{s}</p>
+                  <p style={{ margin: 0, lineHeight: 1.7, fontSize: 15, flex: 1 }}>{renderWords(s)}</p>
                   <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'flex-start' }}>
                     <button
                       onClick={() => { const u = new SpeechSynthesisUtterance(s); u.lang = 'en-US'; speechSynthesis.speak(u); }}
