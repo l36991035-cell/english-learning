@@ -4,7 +4,7 @@ import type { VocabEntry, SrsLevel } from '@/types';
 const INTERVALS_MS = [0, 1, 3, 7, 21].map(d => d * 86_400_000);
 
 export const addVocab = (db: AppDb, e: Omit<VocabEntry, 'id'>) => db.vocab.add(e);
-export const getAllVocab = (db: AppDb) => db.vocab.orderBy('createdAt').reverse().toArray();
+export const getAllVocab = (db: AppDb) => db.vocab.toArray().then(arr => arr.sort((a, b) => b.createdAt - a.createdAt));
 export const getDueVocab = (db: AppDb) => db.vocab.where('nextReview').belowOrEqual(Date.now()).toArray();
 export const deleteVocab = (db: AppDb, id: number) => db.vocab.delete(id);
 
