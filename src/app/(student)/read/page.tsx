@@ -1,7 +1,7 @@
 'use client';
 import { Suspense, useEffect, useState, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { getArticle } from '@/lib/db/articles';
+import { getArticle, updateArticle } from '@/lib/db/articles';
 import { addVocab, getAllVocab } from '@/lib/db/vocabulary';
 import { useStudent } from '@/context/StudentContext';
 import { callAI } from '@/lib/ai';
@@ -19,7 +19,8 @@ function ReadPageInner() {
   const [article, setArticle] = useState<Article | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('full');
   const [shown, setShown] = useState<boolean[]>([]);
-  const [showAllTrans, setShowAllTrans] = useState(false);
+  const [showFullTrans, setShowFullTrans] = useState(false);
+  const [translating, setTranslating] = useState(false);
   const [word, setWord] = useState('');
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
@@ -35,6 +36,28 @@ function ReadPageInner() {
     });
     getAllVocab(db).then(v => setSaved(new Set(v.map(e => e.word.toLowerCase()))));
   }, [id, db]);
+
+  // 即時翻譯全文（若尚無儲存翻譯）
+  const translateAll = async () => {
+    if (!article || !db) return;
+    setTranslating(true);
+    try {
+      const raw = await callAI({
+        messages: [{
+          role: 'user',
+          content: `將以下英文句子逐句翻譯成繁體中文，只回傳 JSON 陣列，順序相同。\n${JSON.stringify(article.sentences)}`,
+        }],
+      });
+      const parsed: string[] = JSON.parse(raw);
+      const translations = Array.isArray(parsed) ? parsed : [];
+      await updateArticle(db, article.id!, { translations });
+      setArticle(prev => prev ? { ...prev, translations } : prev);
+    } catch {
+      showToast('翻譯失敗，請重試');
+    } finally {
+      setTranslating(false);
+    }
+  };
 
   const handleSelect = useCallback(async () => {
     const sel = window.getSelection()?.toString().trim();
@@ -56,7 +79,7 @@ function ReadPageInner() {
       const raw = await callAI({
         messages: [{
           role: 'user',
-          content: `分析這個英文句子的句型結構，用繁體中文說明。只回傳 JSON：{"pattern":"句型（例如 S+V+O）","breakdown":"主詞：... | 動詞：... | 受詞：... 等詳細說明"}\n句子："${sentence}"`,
+          content: `分析此英文句子的句型結構，用繁體中文說明。只回傳 JSON：{"pattern":"句型（例如 S+V+O）","breakdown":"主詞：... | 動詞：... | 受詞：... 等詳細說明"}\n句子："${sentence}"`,
         }],
       });
       setAnalyses(p => ({ ...p, [i]: JSON.parse(raw) }));
@@ -67,21 +90,25 @@ function ReadPageInner() {
     }
   };
 
-  const toggleAllTrans = () => {
-    const next = !showAllTrans;
-    setShowAllTrans(next);
-    setShown(new Array(article?.sentences.length ?? 0).fill(next));
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2500);
   };
 
   const saveWord = async () => {
     if (!word || !lookup || !db) return;
     await addVocab(db, { word, ...lookup, srsLevel: 0, nextReview: Date.now(), createdAt: Date.now() });
     setSaved(p => new Set([...p, word.toLowerCase()]));
-    setToast(`已加入「${word}」`);
-    setTimeout(() => setToast(''), 2000);
+    showToast(`已加入「${word}」`);
+  };
+
+  const toggleAllShown = (show: boolean) => {
+    setShown(new Array(article?.sentences.length ?? 0).fill(show));
   };
 
   if (!article) return <div style={{ padding: 24, color: 'var(--text-muted)' }}>載入中...</div>;
+
+  const hasTranslations = article.translations.length > 0 && article.translations.some(t => t);
 
   const modeBtn = (active: boolean) => ({
     padding: '6px 18px', borderRadius: 999, fontSize: 13, fontWeight: 500,
@@ -90,10 +117,17 @@ function ReadPageInner() {
     color: active ? '#fff' : 'var(--text-muted)',
   });
 
-  const actionBtn = (active = false) => ({
+  const iconBtn = (active = false) => ({
     background: 'none', border: 'none', cursor: 'pointer',
     color: active ? 'var(--accent)' : 'var(--text-subtle)',
-    fontSize: 13, fontWeight: 600, padding: '2px 4px',
+    fontSize: 13, fontWeight: 600, padding: '2px 6px',
+  });
+
+  const pillBtn = (active = false) => ({
+    padding: '5px 14px', borderRadius: 999, border: 'none', cursor: 'pointer',
+    fontSize: 12, fontWeight: 500,
+    background: active ? 'var(--accent)' : 'var(--bg-tertiary)',
+    color: active ? '#fff' : 'var(--text-muted)',
   });
 
   return (
@@ -111,43 +145,62 @@ function ReadPageInner() {
         <button onClick={() => setViewMode('study')} style={modeBtn(viewMode === 'study')}>逐句學習</button>
       </div>
 
-      {/* 全文閱讀模式 */}
+      {/* ── 全文閱讀 ── */}
       {viewMode === 'full' && (
         <div onMouseUp={handleSelect}>
           <p style={{ lineHeight: 1.9, fontSize: 15, whiteSpace: 'pre-wrap', margin: '0 0 20px' }}>
             {article.text}
           </p>
-          {article.translations.length > 0 && (
+
+          {/* 翻譯按鈕 */}
+          {hasTranslations ? (
             <>
-              <button onClick={() => setShowAllTrans(p => !p)} style={{
-                padding: '8px 18px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-                cursor: 'pointer', fontSize: 13, fontWeight: 500, marginBottom: 16,
-                background: showAllTrans ? 'var(--accent)' : 'var(--bg-secondary)',
-                color: showAllTrans ? '#fff' : 'var(--text-muted)',
+              <button onClick={() => setShowFullTrans(p => !p)} style={{
+                padding: '8px 18px', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, fontWeight: 500, marginBottom: 16,
+                background: showFullTrans ? 'var(--accent)' : 'var(--bg-secondary)',
+                color: showFullTrans ? '#fff' : 'var(--text-muted)',
               }}>
-                {showAllTrans ? '隱藏中文翻譯' : '顯示中文翻譯'}
+                {showFullTrans ? '隱藏中文翻譯' : '顯示中文翻譯'}
               </button>
-              {showAllTrans && (
+              {showFullTrans && (
                 <div style={{ borderLeft: '3px solid var(--accent)', paddingLeft: 16, lineHeight: 1.9, fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>
                   {article.translations.join(' ')}
                 </div>
               )}
             </>
+          ) : (
+            <button onClick={translateAll} disabled={translating} style={{
+              padding: '8px 18px', borderRadius: 'var(--radius-sm)',
+              border: 'none', cursor: translating ? 'default' : 'pointer', fontSize: 13, fontWeight: 500, marginBottom: 16,
+              background: 'var(--accent)', color: '#fff', opacity: translating ? 0.7 : 1,
+            }}>
+              {translating ? '翻譯中...' : '取得中文翻譯'}
+            </button>
           )}
+
+          {/* 全文句型解析提示 */}
+          <p style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 8 }}>
+            💡 切換到「逐句學習」可逐句解析句型
+          </p>
         </div>
       )}
 
-      {/* 逐句學習模式 */}
+      {/* ── 逐句學習 ── */}
       {viewMode === 'study' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-            <button onClick={toggleAllTrans} style={{
-              padding: '5px 14px', borderRadius: 999, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 500,
-              background: showAllTrans ? 'var(--accent)' : 'var(--bg-tertiary)',
-              color: showAllTrans ? '#fff' : 'var(--text-muted)',
-            }}>
-              {showAllTrans ? '收起翻譯' : '全部翻譯'}
-            </button>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginBottom: 12 }}>
+            {!hasTranslations && (
+              <button onClick={translateAll} disabled={translating} style={{ ...pillBtn(true), opacity: translating ? 0.7 : 1 }}>
+                {translating ? '翻譯中...' : '取得翻譯'}
+              </button>
+            )}
+            {hasTranslations && (
+              <>
+                <button onClick={() => toggleAllShown(true)} style={pillBtn(false)}>全部展開</button>
+                <button onClick={() => toggleAllShown(false)} style={pillBtn(false)}>全部收起</button>
+              </>
+            )}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} onMouseUp={handleSelect}>
@@ -156,20 +209,23 @@ function ReadPageInner() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                   <p style={{ margin: 0, lineHeight: 1.7, fontSize: 15, flex: 1 }}>{s}</p>
                   <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'flex-start' }}>
-                    <button onClick={() => { const u = new SpeechSynthesisUtterance(s); u.lang = 'en-US'; speechSynthesis.speak(u); }}
-                      style={{ ...actionBtn(), fontSize: 14 }}>▶</button>
-                    <button onClick={() => setShown(p => p.map((v, j) => j === i ? !v : v))}
-                      style={actionBtn(shown[i])}>中</button>
+                    <button
+                      onClick={() => { const u = new SpeechSynthesisUtterance(s); u.lang = 'en-US'; speechSynthesis.speak(u); }}
+                      style={{ ...iconBtn(), fontSize: 14 }}>▶</button>
+                    {hasTranslations && (
+                      <button onClick={() => setShown(p => p.map((v, j) => j === i ? !v : v))}
+                        style={iconBtn(shown[i])}>中</button>
+                    )}
                     <button onClick={() => analyzeSentence(i, s)} disabled={analyzing[i]}
-                      style={{ ...actionBtn(!!analyses[i]), fontSize: 12 }}>
+                      style={{ ...iconBtn(!!analyses[i]), fontSize: 12 }}>
                       {analyzing[i] ? '…' : '解析'}
                     </button>
                   </div>
                 </div>
 
-                {shown[i] && (
+                {shown[i] && hasTranslations && (
                   <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-                    {article.translations[i] || '（尚無翻譯）'}
+                    {article.translations[i] || '—'}
                   </p>
                 )}
 
