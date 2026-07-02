@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useAllVocab, useDueVocab } from '@/hooks/useVocab';
 import { advanceSrs, resetSrs, deleteVocab, addVocab } from '@/lib/db/vocabulary';
 import { useStudent } from '@/context/StudentContext';
-import { callAI } from '@/lib/ai';
+import { callAI, extractJSON } from '@/lib/ai';
 
 type Tab = 'review' | 'list' | 'add';
 
@@ -30,7 +30,7 @@ export default function VocabPage() {
     setLooking(true);
     try {
       const raw = await callAI({ messages: [{ role:'user', content:`Look up "${nw}". JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
-      const p = JSON.parse(raw);
+      const p = extractJSON<{ definition?: string; phonetic?: string; example?: string }>(raw);
       setNd(p.definition??''); setNp(p.phonetic??''); setNe(p.example??'');
     } catch {} finally { setLooking(false); }
   };
