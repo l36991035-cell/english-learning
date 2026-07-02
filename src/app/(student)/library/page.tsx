@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useArticles } from '@/hooks/useArticles';
-import { deleteArticle } from '@/lib/db/articles';
+import { deleteArticle, updateArticle } from '@/lib/db/articles';
 import { useStudent } from '@/context/StudentContext';
 import type { ArticleLevel } from '@/types';
 
@@ -14,6 +14,8 @@ export default function LibraryPage() {
   const { db } = useStudent();
   const articles = useArticles() ?? [];
   const [filter, setFilter] = useState<ArticleLevel | 'all'>('all');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editTitle, setEditTitle] = useState('');
   const shown = filter === 'all' ? articles : articles.filter(a => a.level === filter);
 
   const chip = (active: boolean, color = 'var(--accent)') => ({
@@ -46,7 +48,25 @@ export default function LibraryPage() {
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: COLOR[a.level] + '22', color: COLOR[a.level], display: 'inline-block', marginBottom: 6 }}>
                   {LABEL[a.level]}
                 </span>
-                <h3 style={{ fontSize: 16, margin: '0 0 4px', fontFamily: 'Playfair Display, serif' }}>{a.title}</h3>
+                {editingId === a.id ? (
+                  <input
+                    autoFocus
+                    value={editTitle}
+                    onChange={e => setEditTitle(e.target.value)}
+                    onBlur={() => { if (db && editTitle.trim()) updateArticle(db, a.id!, { title: editTitle.trim() }); setEditingId(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingId(null); }}
+                    onClick={e => e.stopPropagation()}
+                    style={{ fontSize: 16, margin: '0 0 4px', fontFamily: 'Playfair Display, serif', width: '100%', background: 'var(--bg-primary)', border: '1px solid var(--accent)', borderRadius: 4, padding: '2px 6px', color: 'var(--text-primary)' }}
+                  />
+                ) : (
+                  <h3
+                    onClick={e => { e.stopPropagation(); setEditingId(a.id!); setEditTitle(a.title); }}
+                    title="點擊編輯標題"
+                    style={{ fontSize: 16, margin: '0 0 4px', fontFamily: 'Playfair Display, serif', cursor: 'text', minHeight: 24 }}
+                  >
+                    {a.title || <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>（未命名）</span>}
+                  </h3>
+                )}
                 <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>{a.topic} · {a.wordCount} 字</p>
               </div>
               <button onClick={e => { e.stopPropagation(); db && deleteArticle(db, a.id!); }}

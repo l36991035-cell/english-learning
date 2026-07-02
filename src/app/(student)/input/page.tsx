@@ -16,7 +16,7 @@ async function ai(prompt: string, imageBase64?: string): Promise<string> {
 async function processAndSave(db: AppDb, rawText: string, router: ReturnType<typeof useRouter>, setStatus: (s: string) => void) {
   setStatus('分析文章...');
   const metaRaw = await ai(`Analyze this English article and return JSON only (no markdown):
-{"title":"...","level":"beginner|intermediate|advanced","topic":"中文主題"}
+{"title":"concise English article title","level":"beginner|intermediate|advanced","topic":"中文主題（2-4字）"}
 Article: ${rawText.slice(0, 2000)}`);
   const meta = (() => { try { return extractJSON(metaRaw) as { title: string; level: string; topic: string }; } catch { return { title: 'Untitled', level: 'intermediate', topic: '一般' }; } })();
 
