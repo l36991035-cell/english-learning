@@ -8,7 +8,10 @@ type Msg = { role: 'user' | 'assistant'; content: string };
 const SYSTEM = (topic: string) =>
   `You are a friendly English conversation partner for a Mandarin speaker practicing English. Topic: ${topic}.
 - Keep each reply to 2–3 sentences
-- Gently correct major grammar errors at the end in Traditional Chinese: e.g. "小提示：應說 X 而非 Y"
+- At the end of each reply, add ONE "小提示" in Traditional Chinese only when needed:
+  * Grammar error → e.g. "小提示：應說 X 而非 Y"
+  * Correct but unnatural or too formal → e.g. "小提示：'How are you?' 沒錯，但口語更常說 'How's it going?' 或 'What's up?'"
+  * If the user's English is already natural, skip the 小提示
 - End with a follow-up question`;
 
 export default function ChatPage() {
