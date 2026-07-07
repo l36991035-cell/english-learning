@@ -167,6 +167,17 @@ export default function ChatPage() {
     if (!next) { window.speechSynthesis.cancel(); try { recognitionRef.current?.stop(); } catch {} }
   };
 
+  const start = async (t: string) => {
+    setTopic(t); loadingRef.current = true; setLoading(true);
+    try {
+      const init: Msg = { role: 'user', content: "Hello! Let's start." };
+      const reply = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(t), messages: [init] });
+      setMsgs([init, { role: 'assistant' as const, content: reply }]);
+      loadingRef.current = false; setLoading(false);
+      speak(reply, true); fetchSuggestions(reply);
+    } catch { setTopic(''); loadingRef.current = false; setLoading(false); }
+  };
+
   const smallBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' };
 
   if (!topic) return (
@@ -183,17 +194,6 @@ export default function ChatPage() {
       </div>
     </div>
   );
-
-  const start = async (t: string) => {
-    setTopic(t); loadingRef.current = true; setLoading(true);
-    try {
-      const init: Msg = { role: 'user', content: "Hello! Let's start." };
-      const reply = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(t), messages: [init] });
-      setMsgs([init, { role: 'assistant', content: reply }]);
-      loadingRef.current = false; setLoading(false);
-      speak(reply, true); fetchSuggestions(reply);
-    } catch { setTopic(''); loadingRef.current = false; setLoading(false); }
-  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 52px)' }}>
