@@ -262,9 +262,11 @@ function ReadPageInner() {
               <div style={{ padding: 16 }}>
                 {/* 單字標題列 */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <strong style={{ fontSize: 20 }}>{word}</strong>
-                    <span className="mono" style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 14 }}>{lookup.phonetic}</span>
+                    <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 14 }}>{lookup.phonetic}</span>
+                    <button onClick={() => { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(word); u.lang = 'en-US'; u.rate = 0.85; window.speechSynthesis.speak(u); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: '0 2px', lineHeight: 1 }}>🔊</button>
                   </div>
                   <button onClick={saveWord} disabled={saved.has(word.toLowerCase())}
                     style={{ background: saved.has(word.toLowerCase()) ? 'var(--bg-tertiary)' : 'var(--accent)', color: saved.has(word.toLowerCase()) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500, flexShrink: 0 }}>

@@ -267,9 +267,11 @@ export default function ChatPage() {
         <div style={{ position: 'fixed', bottom: 80, left: 0, right: 0, zIndex: 100, padding: '0 12px' }}>
           <div style={{ background: 'var(--bg-primary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', boxShadow: '0 -4px 24px rgba(0,0,0,0.12)', padding: 16, maxHeight: '55vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <strong style={{ fontSize: 20 }}>{chatWord}</strong>
                 {chatLookup?.phonetic && <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 15 }}>{chatLookup.phonetic}</span>}
+                <button onClick={() => speak(chatWord)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: '0 2px', lineHeight: 1 }}>🔊</button>
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button onClick={saveChatWord} disabled={!chatLookup || chatLookup.definition === '查詢失敗'}
