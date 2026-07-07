@@ -161,7 +161,7 @@ export default function ChatPage() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={toggleVoiceMode}
-            style={{ padding: '6px 12px', background: voiceMode ? '#276749' : 'var(--bg-primary)', border: `1px solid ${voiceMode ? '#48bb78' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: voiceMode ? '#9ae6b4' : 'var(--text-muted)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>
+            style={{ padding: '6px 12px', background: voiceMode ? '#d1fae5' : 'var(--bg-primary)', border: `1px solid ${voiceMode ? '#6ee7b7' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: voiceMode ? '#065f46' : 'var(--text-muted)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>
             {voiceMode ? '語音模式 ON' : '語音模式'}
           </button>
           <button onClick={() => { setTopic(''); setMsgs([]); setVoiceMode(false); voiceModeRef.current = false; window.speechSynthesis.cancel(); try { recognitionRef.current?.stop(); } catch {} }}
@@ -173,7 +173,7 @@ export default function ChatPage() {
 
       {/* Voice mode hint bar */}
       {voiceMode && (
-        <div style={{ padding: '7px 20px', background: '#1c3a2a', borderBottom: '1px solid #276749', fontSize: 13, color: '#68d391', textAlign: 'center' }}>
+        <div style={{ padding: '7px 20px', background: '#ecfdf5', borderBottom: '1px solid #a7f3d0', fontSize: 13, color: '#065f46', textAlign: 'center' }}>
           支援中英文混說 — AI 說完後自動開始聆聽你的回答
         </div>
       )}
@@ -194,7 +194,7 @@ export default function ChatPage() {
         )}
         {listening && (
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <div style={{ padding: '12px 18px', background: '#3d1a1a', borderRadius: 'var(--radius)', border: '1px solid #e53e3e', color: '#fc8181', fontSize: 15, fontStyle: 'italic' }}>
+            <div style={{ padding: '12px 18px', background: '#fff5f5', borderRadius: 'var(--radius)', border: '1px solid #feb2b2', color: '#c53030', fontSize: 15, fontStyle: 'italic' }}>
               聆聽中，請說話...
             </div>
           </div>
