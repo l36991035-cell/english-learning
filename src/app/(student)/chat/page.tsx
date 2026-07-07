@@ -14,49 +14,75 @@ const SYSTEM = (topic: string) =>
   * If the user's English is already natural, skip the 小提示
 - End with a follow-up question`;
 
-const speak = (text: string) => {
-  if (typeof window === 'undefined') return;
-  const english = text.split('小提示')[0].trim();
-  if (!english) return;
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(english);
-  u.lang = 'en-US';
-  u.rate = 0.9;
-  window.speechSynthesis.speak(u);
-};
-
 export default function ChatPage() {
   const [topic, setTopic] = useState('');
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+
   const bottom = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const sendTextRef = useRef<(text: string) => Promise<void>>();
+  const voiceModeRef = useRef(false);
+  const loadingRef = useRef(false);
 
+  useEffect(() => { voiceModeRef.current = voiceMode; }, [voiceMode]);
   useEffect(() => { bottom.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
 
+  const startListening = useCallback(() => {
+    if (!recognitionRef.current || loadingRef.current) return;
+    try {
+      recognitionRef.current.start();
+      setListening(true);
+    } catch {}
+  }, []);
+
+  const speak = useCallback((text: string, autoListen = false) => {
+    if (typeof window === 'undefined') return;
+    const english = text.split('小提示')[0].trim();
+    if (!english) {
+      if (autoListen && voiceModeRef.current) startListening();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(english);
+    u.lang = 'en-US';
+    u.rate = 0.9;
+    if (autoListen) {
+      u.onend = () => { if (voiceModeRef.current) startListening(); };
+    }
+    window.speechSynthesis.speak(u);
+  }, [startListening]);
+
   const sendText = useCallback(async (text: string) => {
-    if (!text.trim() || loading) return;
+    if (!text.trim() || loadingRef.current) return;
     const next: Msg[] = [...msgs, { role: 'user', content: text.trim() }];
     setMsgs(next);
     setInput('');
+    loadingRef.current = true;
     setLoading(true);
     try {
       const reply = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(topic || 'General'), messages: next });
       setMsgs([...next, { role: 'assistant', content: reply }]);
-      speak(reply);
-    } catch {} finally { setLoading(false); }
-  }, [msgs, loading, topic]);
+      loadingRef.current = false;
+      setLoading(false);
+      speak(reply, true); // always pass autoListen; speak() checks voiceModeRef internally
+    } catch {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  }, [msgs, topic, speak]);
 
   useEffect(() => { sendTextRef.current = sendText; }, [sendText]);
 
+  // Setup speech recognition once (zh-TW supports Chinese + English mixing)
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
     const r = new SR();
-    r.lang = 'en-US';
+    r.lang = 'zh-TW';
     r.continuous = false;
     r.interimResults = false;
     r.onresult = (e: any) => {
@@ -74,8 +100,17 @@ export default function ChatPage() {
     if (listening) {
       recognitionRef.current.stop();
     } else {
-      recognitionRef.current.start();
-      setListening(true);
+      startListening();
+    }
+  };
+
+  const toggleVoiceMode = () => {
+    const next = !voiceMode;
+    setVoiceMode(next);
+    voiceModeRef.current = next;
+    if (!next) {
+      window.speechSynthesis.cancel();
+      try { recognitionRef.current?.stop(); } catch {}
     }
   };
 
@@ -83,13 +118,20 @@ export default function ChatPage() {
 
   const start = async (t: string) => {
     setTopic(t);
+    loadingRef.current = true;
     setLoading(true);
     try {
       const init: Msg = { role: 'user', content: "Hello! Let's start." };
       const reply = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(t), messages: [init] });
       setMsgs([init, { role: 'assistant', content: reply }]);
-      speak(reply);
-    } catch { setTopic(''); } finally { setLoading(false); }
+      loadingRef.current = false;
+      setLoading(false);
+      speak(reply, true);
+    } catch {
+      setTopic('');
+      loadingRef.current = false;
+      setLoading(false);
+    }
   };
 
   if (!topic) return (
@@ -109,18 +151,35 @@ export default function ChatPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 52px)' }}>
+      {/* Header */}
       <div style={{ padding: '14px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <p style={{ margin: 0, fontWeight: 600, fontSize: 17 }}>{topic}</p>
-          <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>Claude Sonnet</p>
+          <p style={{ margin: 0, fontSize: 12, color: voiceMode ? '#48bb78' : 'var(--text-muted)' }}>
+            {voiceMode ? '語音對話模式 — 說完 AI 自動聆聽' : 'Claude Sonnet'}
+          </p>
         </div>
-        <button onClick={() => { setTopic(''); setMsgs([]); window.speechSynthesis.cancel(); }}
-          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
-          換主題
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button onClick={toggleVoiceMode}
+            style={{ padding: '6px 12px', background: voiceMode ? '#276749' : 'var(--bg-primary)', border: `1px solid ${voiceMode ? '#48bb78' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: voiceMode ? '#9ae6b4' : 'var(--text-muted)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>
+            {voiceMode ? '語音模式 ON' : '語音模式'}
+          </button>
+          <button onClick={() => { setTopic(''); setMsgs([]); setVoiceMode(false); voiceModeRef.current = false; window.speechSynthesis.cancel(); try { recognitionRef.current?.stop(); } catch {} }}
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
+            換主題
+          </button>
+        </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: 80, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Voice mode hint bar */}
+      {voiceMode && (
+        <div style={{ padding: '7px 20px', background: '#1c3a2a', borderBottom: '1px solid #276749', fontSize: 13, color: '#68d391', textAlign: 'center' }}>
+          支援中英文混說 — AI 說完後自動開始聆聽你的回答
+        </div>
+      )}
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: 84, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {msgs.map((m, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{ maxWidth: '80%', padding: '14px 18px', borderRadius: 'var(--radius)', fontSize: 17, lineHeight: 1.7, background: m.role === 'user' ? 'var(--accent)' : 'var(--bg-secondary)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', border: m.role === 'assistant' ? '1px solid var(--border)' : 'none', whiteSpace: 'pre-wrap' }}>
@@ -133,17 +192,25 @@ export default function ChatPage() {
             <div style={{ padding: '14px 18px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 17 }}>...</div>
           </div>
         )}
+        {listening && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ padding: '12px 18px', background: '#3d1a1a', borderRadius: 'var(--radius)', border: '1px solid #e53e3e', color: '#fc8181', fontSize: 15, fontStyle: 'italic' }}>
+              聆聽中，請說話...
+            </div>
+          </div>
+        )}
         <div ref={bottom} />
       </div>
 
+      {/* Input bar */}
       <div style={{ padding: '10px 16px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, position: 'fixed', bottom: 0, left: 0, right: 0 }}>
         <input value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-          placeholder={listening ? '聆聽中...' : 'Type or use mic...'}
+          placeholder={listening ? '聆聽中...' : '打字或按語音...'}
           disabled={loading || listening}
           style={{ flex: 1, padding: '12px 14px', background: 'var(--bg-primary)', border: `1px solid ${listening ? '#e53e3e' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: 17 }} />
         <button onClick={toggleListen} disabled={loading}
-          style={{ padding: '10px 14px', minWidth: 52, background: listening ? '#e53e3e' : 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: listening ? '#fff' : 'var(--text-muted)', cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>
+          style={{ padding: '10px 14px', minWidth: 52, background: listening ? '#e53e3e' : 'var(--bg-primary)', border: `1px solid ${listening ? '#e53e3e' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: listening ? '#fff' : 'var(--text-muted)', cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>
           {listening ? '停止' : '語音'}
         </button>
         <button onClick={send} disabled={loading || !input.trim() || listening}
