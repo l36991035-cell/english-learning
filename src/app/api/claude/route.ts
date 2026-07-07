@@ -5,7 +5,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model = 'claude-haiku-4-5-20251001', system, imageBase64, mediaType = 'image/jpeg' } =
+    const { messages, model = 'claude-sonnet-4-6', system, imageBase64, mediaType = 'image/jpeg' } =
       await req.json();
 
     if (imageBase64 && !messages?.length) {
