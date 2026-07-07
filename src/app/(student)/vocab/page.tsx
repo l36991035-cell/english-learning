@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAllVocab, useDueVocab } from '@/hooks/useVocab';
 import { advanceSrs, resetSrs, deleteVocab, addVocab } from '@/lib/db/vocabulary';
 import { useStudent } from '@/context/StudentContext';
@@ -22,8 +22,86 @@ export default function VocabPage() {
   const [nextraBreakdown, setNextraBreakdown] = useState('');
   const [nextraPhrases, setNextraPhrases] = useState<string[]>([]);
   const [nextraInformal, setNextraInformal] = useState('');
+  const [writingWord, setWritingWord] = useState<string | null>(null);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawingRef = useRef(false);
 
   const cur = due[idx];
+
+  const pronounce = (word: string) => {
+    if (typeof window === 'undefined') return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = 'en-US';
+    u.rate = 0.85;
+    window.speechSynthesis.speak(u);
+  };
+
+  useEffect(() => {
+    if (!writingWord) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    const getPos = (e: MouseEvent | TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+      return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+    };
+
+    const onStart = (e: MouseEvent | TouchEvent) => {
+      e.preventDefault();
+      isDrawingRef.current = true;
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+    };
+
+    const onMove = (e: MouseEvent | TouchEvent) => {
+      e.preventDefault();
+      if (!isDrawingRef.current) return;
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    };
+
+    const onEnd = () => { isDrawingRef.current = false; };
+
+    canvas.addEventListener('mousedown', onStart);
+    canvas.addEventListener('mousemove', onMove);
+    canvas.addEventListener('mouseup', onEnd);
+    canvas.addEventListener('mouseleave', onEnd);
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd);
+
+    return () => {
+      canvas.removeEventListener('mousedown', onStart);
+      canvas.removeEventListener('mousemove', onMove);
+      canvas.removeEventListener('mouseup', onEnd);
+      canvas.removeEventListener('mouseleave', onEnd);
+      canvas.removeEventListener('touchstart', onStart);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onEnd);
+    };
+  }, [writingWord]);
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
 
   const know = async () => { if (cur?.id && db) { await advanceSrs(db, cur.id); setFlipped(false); setIdx(i => i+1); }};
   const forget = async () => { if (cur?.id && db) { await resetSrs(db, cur.id); setFlipped(false); setIdx(i => i+1); }};
@@ -48,7 +126,7 @@ export default function VocabPage() {
     setNextraBreakdown(''); setNextraPhrases([]); setNextraInformal('');
   };
 
-  const tb = (t: Tab, label: string) => ({
+  const tb = (t: Tab) => ({
     padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: 'none',
     cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500,
     background: tab === t ? 'var(--accent)' : 'var(--bg-tertiary)',
@@ -57,13 +135,15 @@ export default function VocabPage() {
 
   const inp = { width:'100%', padding:'12px 14px', boxSizing:'border-box' as const, background:'var(--bg-secondary)', border:'1px solid var(--border)', borderRadius:'var(--radius)', color:'var(--text-primary)', fontFamily:'inherit', fontSize:17 };
 
+  const iconBtn = { background:'none', border:'none', cursor:'pointer', padding:'4px 8px', borderRadius:6, fontSize:18, color:'var(--text-muted)' };
+
   return (
     <div style={{ padding:24, maxWidth:640, margin:'0 auto' }}>
       <h1 style={{ fontSize:26, marginBottom:16 }}>單字庫</h1>
       <div style={{ display:'flex', gap:8, marginBottom:24 }}>
-        <button style={tb('review','複習')} onClick={() => { setTab('review'); setIdx(0); setFlipped(false); }}>複習 ({due.length})</button>
-        <button style={tb('list','全部')} onClick={() => setTab('list')}>全部 ({all.length})</button>
-        <button style={tb('add','新增')} onClick={() => setTab('add')}>新增</button>
+        <button style={tb('review')} onClick={() => { setTab('review'); setIdx(0); setFlipped(false); }}>複習 ({due.length})</button>
+        <button style={tb('list')} onClick={() => setTab('list')}>全部 ({all.length})</button>
+        <button style={tb('add')} onClick={() => setTab('add')}>新增</button>
       </div>
 
       {tab === 'review' && (
@@ -79,6 +159,15 @@ export default function VocabPage() {
                   <p style={{ fontSize:16, color:'var(--text-muted)', fontStyle:'italic', margin:0 }}>{cur.example}</p>
                 </>}
               </div>
+              {/* 讀音 & 手寫 buttons */}
+              <div style={{ display:'flex', gap:8, justifyContent:'center', marginTop:12 }}>
+                <button onClick={e => { e.stopPropagation(); pronounce(cur.word); }} style={{ ...iconBtn, background:'var(--bg-secondary)', border:'1px solid var(--border)', padding:'8px 16px', fontSize:15, fontWeight:500, color:'var(--text-primary)' }}>
+                  🔊 讀音
+                </button>
+                <button onClick={e => { e.stopPropagation(); setWritingWord(cur.word); }} style={{ ...iconBtn, background:'var(--bg-secondary)', border:'1px solid var(--border)', padding:'8px 16px', fontSize:15, fontWeight:500, color:'var(--text-primary)' }}>
+                  ✏️ 手寫練習
+                </button>
+              </div>
               {flipped
                 ? <div style={{ display:'flex', gap:12, marginTop:14 }}>
                     <button onClick={forget} style={{ flex:1, padding:12, background:'#ef444422', color:'#ef4444', border:'1px solid #ef444444', borderRadius:'var(--radius)', cursor:'pointer', fontFamily:'inherit', fontWeight:600 }}>不記得</button>
@@ -92,12 +181,16 @@ export default function VocabPage() {
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {all.map(v => (
             <div key={v.id} style={{ background:'var(--bg-secondary)', borderRadius:'var(--radius-sm)', padding:'12px 14px', border:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-              <div>
-                <strong>{v.word}</strong>
-                <span className="mono" style={{ color:'var(--text-muted)', marginLeft:8, fontSize:15 }}>{v.phonetic}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <strong style={{ fontSize:17 }}>{v.word}</strong>
+                  <span className="mono" style={{ color:'var(--text-muted)', fontSize:15 }}>{v.phonetic}</span>
+                  <button onClick={() => pronounce(v.word)} style={iconBtn} title="讀音">🔊</button>
+                </div>
                 <p style={{ margin:'2px 0 0', fontSize:15, color:'var(--text-muted)' }}>{v.definition}</p>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <button onClick={() => setWritingWord(v.word)} style={iconBtn} title="手寫練習">✏️</button>
                 <span style={{ fontSize:11, color:'var(--accent)', background:'var(--bg-tertiary)', padding:'2px 8px', borderRadius:4 }}>Lv.{v.srsLevel}</span>
                 <button onClick={() => v.id && db && deleteVocab(db, v.id)} style={{ background:'none', border:'none', color:'var(--text-subtle)', cursor:'pointer', fontSize:16 }}>✕</button>
               </div>
@@ -113,6 +206,7 @@ export default function VocabPage() {
             <button onClick={autoLookup} disabled={looking || !nw.trim()} style={{ padding:'12px 14px', background:'var(--bg-tertiary)', border:'none', borderRadius:'var(--radius)', color:'var(--text-primary)', cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' }}>
               {looking ? '查詢中...' : '自動查詢'}
             </button>
+            <button onClick={() => nw.trim() && pronounce(nw)} disabled={!nw.trim()} style={{ padding:'12px 14px', background:'var(--bg-tertiary)', border:'none', borderRadius:'var(--radius)', cursor:'pointer', fontSize:18 }} title="讀音">🔊</button>
           </div>
           <input value={np} onChange={e => setNp(e.target.value)} placeholder="/音標/" style={inp} />
           <input value={nd} onChange={e => setNd(e.target.value)} placeholder="中文定義 (詞性)" style={inp} />
@@ -121,7 +215,6 @@ export default function VocabPage() {
             加入單字庫
           </button>
 
-          {/* 延伸資訊（自動查詢後顯示） */}
           {(nextraBreakdown || nextraPhrases.length > 0 || nextraInformal) && (
             <div style={{ marginTop:4, background:'var(--bg-primary)', borderRadius:'var(--radius)', border:'1px solid var(--border)', padding:14, display:'flex', flexDirection:'column', gap:12 }}>
               {nextraBreakdown && (
@@ -146,6 +239,33 @@ export default function VocabPage() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* 手寫練習 Modal */}
+      {writingWord && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}
+          onClick={() => setWritingWord(null)}>
+          <div style={{ background:'var(--bg-primary)', borderRadius:16, padding:20, width:'100%', maxWidth:420, boxShadow:'0 20px 60px rgba(0,0,0,0.25)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:26, fontWeight:700 }}>{writingWord}</span>
+                <button onClick={() => pronounce(writingWord)} style={{ ...iconBtn, fontSize:20 }}>🔊</button>
+              </div>
+              <button onClick={() => setWritingWord(null)} style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:20, lineHeight:1 }}>✕</button>
+            </div>
+            <p style={{ margin:'0 0 10px', fontSize:13, color:'var(--text-muted)' }}>用手指或滑鼠在下方練習書寫</p>
+            <canvas
+              ref={canvasRef}
+              width={760}
+              height={400}
+              style={{ width:'100%', height:200, background:'#f8fafc', borderRadius:10, border:'1px solid var(--border)', display:'block', touchAction:'none', cursor:'crosshair' }}
+            />
+            <button onClick={clearCanvas} style={{ marginTop:10, width:'100%', padding:'10px', background:'var(--bg-tertiary)', border:'none', borderRadius:'var(--radius-sm)', cursor:'pointer', fontFamily:'inherit', fontSize:15, color:'var(--text-primary)', fontWeight:500 }}>
+              清除重寫
+            </button>
+          </div>
         </div>
       )}
     </div>
