@@ -48,11 +48,11 @@ export default function VocabPage() {
     color: tab === t ? '#fff' : 'var(--text-muted)',
   });
 
-  const inp = { width:'100%', padding:'12px 14px', boxSizing:'border-box' as const, background:'var(--bg-secondary)', border:'1px solid var(--border)', borderRadius:'var(--radius)', color:'var(--text-primary)', fontFamily:'inherit', fontSize:15 };
+  const inp = { width:'100%', padding:'12px 14px', boxSizing:'border-box' as const, background:'var(--bg-secondary)', border:'1px solid var(--border)', borderRadius:'var(--radius)', color:'var(--text-primary)', fontFamily:'inherit', fontSize:17 };
 
   return (
     <div style={{ padding:24, maxWidth:640, margin:'0 auto' }}>
-      <h1 style={{ fontSize:24, marginBottom:16 }}>單字庫</h1>
+      <h1 style={{ fontSize:26, marginBottom:16 }}>單字庫</h1>
       <div style={{ display:'flex', gap:8, marginBottom:24 }}>
         <button style={tb('review','複習')} onClick={() => { setTab('review'); setIdx(0); setFlipped(false); }}>複習 ({due.length})</button>
         <button style={tb('list','全部')} onClick={() => setTab('list')}>全部 ({all.length})</button>
@@ -65,11 +65,11 @@ export default function VocabPage() {
           : <div style={{ textAlign:'center' }}>
               <p style={{ color:'var(--text-muted)', fontSize:13, marginBottom:12 }}>{idx+1} / {due.length}</p>
               <div onClick={() => setFlipped(f => !f)} style={{ background:'var(--bg-secondary)', borderRadius:'var(--radius)', border:'1px solid var(--border)', padding:'40px 24px', minHeight:200, cursor:'pointer', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center' }}>
-                <p style={{ fontSize:28, fontWeight:700, margin:0 }}>{cur.word}</p>
+                <p style={{ fontSize:30, fontWeight:700, margin:0 }}>{cur.word}</p>
                 {flipped && <>
-                  <p className="mono" style={{ color:'var(--text-muted)', margin:'8px 0' }}>{cur.phonetic}</p>
-                  <p style={{ fontSize:16, margin:'0 0 8px' }}>{cur.definition}</p>
-                  <p style={{ fontSize:14, color:'var(--text-muted)', fontStyle:'italic', margin:0 }}>{cur.example}</p>
+                  <p className="mono" style={{ color:'var(--text-muted)', margin:'8px 0', fontSize:16 }}>{cur.phonetic}</p>
+                  <p style={{ fontSize:18, margin:'0 0 8px' }}>{cur.definition}</p>
+                  <p style={{ fontSize:16, color:'var(--text-muted)', fontStyle:'italic', margin:0 }}>{cur.example}</p>
                 </>}
               </div>
               {flipped
@@ -87,8 +87,8 @@ export default function VocabPage() {
             <div key={v.id} style={{ background:'var(--bg-secondary)', borderRadius:'var(--radius-sm)', padding:'12px 14px', border:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <strong>{v.word}</strong>
-                <span className="mono" style={{ color:'var(--text-muted)', marginLeft:8, fontSize:13 }}>{v.phonetic}</span>
-                <p style={{ margin:'2px 0 0', fontSize:13, color:'var(--text-muted)' }}>{v.definition}</p>
+                <span className="mono" style={{ color:'var(--text-muted)', marginLeft:8, fontSize:15 }}>{v.phonetic}</span>
+                <p style={{ margin:'2px 0 0', fontSize:15, color:'var(--text-muted)' }}>{v.definition}</p>
               </div>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <span style={{ fontSize:11, color:'var(--accent)', background:'var(--bg-tertiary)', padding:'2px 8px', borderRadius:4 }}>Lv.{v.srsLevel}</span>
@@ -110,7 +110,7 @@ export default function VocabPage() {
           <input value={np} onChange={e => setNp(e.target.value)} placeholder="/音標/" style={inp} />
           <input value={nd} onChange={e => setNd(e.target.value)} placeholder="中文定義 (詞性)" style={inp} />
           <input value={ne} onChange={e => setNe(e.target.value)} placeholder="例句" style={inp} />
-          <button onClick={saveNew} disabled={!nw.trim()} style={{ padding:12, background:'var(--accent)', border:'none', borderRadius:'var(--radius)', color:'#fff', cursor:'pointer', fontFamily:'inherit', fontWeight:600, fontSize:15 }}>
+          <button onClick={saveNew} disabled={!nw.trim()} style={{ padding:12, background:'var(--accent)', border:'none', borderRadius:'var(--radius)', color:'#fff', cursor:'pointer', fontFamily:'inherit', fontWeight:600, fontSize:17 }}>
             加入單字庫
           </button>
         </div>

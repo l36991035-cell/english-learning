@@ -146,8 +146,8 @@ function ReadPageInner() {
         style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', marginBottom: 16, padding: 0 }}>
         ← 返回
       </button>
-      <h1 style={{ fontSize: 22, marginBottom: 4, fontFamily: 'Playfair Display, serif' }}>{article.title}</h1>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 16 }}>{article.topic} · {article.wordCount} 字</p>
+      <h1 style={{ fontSize: 24, marginBottom: 4, fontFamily: 'Playfair Display, serif' }}>{article.title}</h1>
+      <p style={{ color: 'var(--text-muted)', fontSize: 15, marginBottom: 16 }}>{article.topic} · {article.wordCount} 字</p>
 
       {/* 模式切換 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
@@ -158,7 +158,7 @@ function ReadPageInner() {
       {/* ── 全文閱讀 ── */}
       {viewMode === 'full' && (
         <div>
-          <p style={{ lineHeight: 1.9, fontSize: 15, whiteSpace: 'pre-wrap', margin: '0 0 20px' }}>
+          <p style={{ lineHeight: 1.9, fontSize: 17, whiteSpace: 'pre-wrap', margin: '0 0 20px' }}>
             {renderWords(article.text)}
           </p>
 
@@ -174,7 +174,7 @@ function ReadPageInner() {
                 {showFullTrans ? '隱藏中文翻譯' : '顯示中文翻譯'}
               </button>
               {showFullTrans && (
-                <div style={{ borderLeft: '3px solid var(--accent)', paddingLeft: 16, lineHeight: 1.9, fontSize: 14, color: 'var(--text-muted)', marginBottom: 20 }}>
+                <div style={{ borderLeft: '3px solid var(--accent)', paddingLeft: 16, lineHeight: 1.9, fontSize: 16, color: 'var(--text-muted)', marginBottom: 20 }}>
                   {article.translations.join(' ')}
                 </div>
               )}
@@ -217,7 +217,7 @@ function ReadPageInner() {
             {article.sentences.map((s, i) => (
               <div key={i} style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', padding: '12px 14px', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                  <p style={{ margin: 0, lineHeight: 1.7, fontSize: 15, flex: 1 }}>{renderWords(s)}</p>
+                  <p style={{ margin: 0, lineHeight: 1.7, fontSize: 17, flex: 1 }}>{renderWords(s)}</p>
                   <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'flex-start' }}>
                     <button
                       onClick={() => { const u = new SpeechSynthesisUtterance(s); u.lang = 'en-US'; speechSynthesis.speak(u); }}
@@ -234,7 +234,7 @@ function ReadPageInner() {
                 </div>
 
                 {shown[i] && hasTranslations && (
-                  <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+                  <p style={{ margin: '8px 0 0', fontSize: 15, color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 8 }}>
                     {article.translations[i] || '—'}
                   </p>
                 )}
@@ -270,8 +270,8 @@ function ReadPageInner() {
                     {saved.has(word.toLowerCase()) ? '已儲存' : '加入單字庫'}
                   </button>
                 </div>
-                <p style={{ margin: '0 0 4px', fontSize: 14 }}>{lookup.definition}</p>
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>{lookup.example}</p>
+                <p style={{ margin: '0 0 4px', fontSize: 16 }}>{lookup.definition}</p>
+                <p style={{ margin: 0, fontSize: 15, color: 'var(--text-muted)', fontStyle: 'italic' }}>{lookup.example}</p>
               </>
             )}
         </div>

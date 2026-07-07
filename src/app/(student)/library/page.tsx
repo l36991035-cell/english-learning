@@ -27,7 +27,7 @@ export default function LibraryPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 24, marginBottom: 16 }}>文章庫</h1>
+      <h1 style={{ fontSize: 26, marginBottom: 16 }}>文章庫</h1>
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <button onClick={() => setFilter('all')} style={chip(filter === 'all')}>全部</button>
         {(['beginner','intermediate','advanced'] as ArticleLevel[]).map(l => (
@@ -56,18 +56,18 @@ export default function LibraryPage() {
                     onBlur={() => { if (db && editTitle.trim()) updateArticle(db, a.id!, { title: editTitle.trim() }); setEditingId(null); }}
                     onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setEditingId(null); }}
                     onClick={e => e.stopPropagation()}
-                    style={{ fontSize: 16, margin: '0 0 4px', fontFamily: 'Playfair Display, serif', width: '100%', background: 'var(--bg-primary)', border: '1px solid var(--accent)', borderRadius: 4, padding: '2px 6px', color: 'var(--text-primary)' }}
+                    style={{ fontSize: 18, margin: '0 0 4px', fontFamily: 'Playfair Display, serif', width: '100%', background: 'var(--bg-primary)', border: '1px solid var(--accent)', borderRadius: 4, padding: '2px 6px', color: 'var(--text-primary)' }}
                   />
                 ) : (
                   <h3
                     onClick={e => { e.stopPropagation(); setEditingId(a.id!); setEditTitle(a.title); }}
                     title="點擊編輯標題"
-                    style={{ fontSize: 16, margin: '0 0 4px', fontFamily: 'Playfair Display, serif', cursor: 'text', minHeight: 24 }}
+                    style={{ fontSize: 18, margin: '0 0 4px', fontFamily: 'Playfair Display, serif', cursor: 'text', minHeight: 24 }}
                   >
                     {a.title || <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>（未命名）</span>}
                   </h3>
                 )}
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)' }}>{a.topic} · {a.wordCount} 字</p>
+                <p style={{ margin: 0, fontSize: 15, color: 'var(--text-muted)' }}>{a.topic} · {a.wordCount} 字</p>
               </div>
               <button onClick={e => { e.stopPropagation(); db && deleteArticle(db, a.id!); }}
                 style={{ background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 18 }}>✕</button>
