@@ -7,7 +7,7 @@ import { useStudent } from '@/context/StudentContext';
 import { callAI, extractJSON } from '@/lib/ai';
 import type { Article } from '@/types';
 
-type Lookup = { definition: string; phonetic: string; example: string };
+type Lookup = { definition: string; phonetic: string; example: string; example_zh: string; example_breakdown: string; phrases: string[]; informal: string };
 type Analysis = { pattern: string; breakdown: string };
 type ViewMode = 'full' | 'study';
 
@@ -64,10 +64,10 @@ function ReadPageInner() {
     if (!w || w.length < 2) return;
     setWord(w); setLookup(null); setLookingUp(true);
     try {
-      const result = await callAI({ messages: [{ role: 'user', content: `Look up "${w}". Return JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
+      const result = await callAI({ messages: [{ role: 'user', content: `Look up "${w}". Return JSON only: {"definition":"繁中定義 (詞性)","phonetic":"/IPA/","example":"自然英文例句","example_zh":"例句中文翻譯","example_breakdown":"例句語法結構解析（繁中，說明主詞/動詞/受詞等）","phrases":["常見片語或搭配詞: 中文意思"],"informal":"口語或非正式用法說明（若無則空字串）"}` }] });
       setLookup(extractJSON<Lookup>(result));
     } catch {
-      setLookup({ definition: '查詢失敗', phonetic: '', example: '' });
+      setLookup({ definition: '查詢失敗', phonetic: '', example: '', example_zh: '', example_breakdown: '', phrases: [], informal: '' });
     } finally {
       setLookingUp(false);
     }
@@ -255,24 +255,55 @@ function ReadPageInner() {
 
       {/* 單字查詢彈窗 */}
       {(lookup || lookingUp) && (
-        <div style={{ position: 'fixed', bottom: 80, left: 16, right: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+        <div style={{ position: 'fixed', bottom: 80, left: 16, right: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', maxHeight: '60vh', overflowY: 'auto' }}>
           {lookingUp
-            ? <p style={{ color: 'var(--text-muted)', margin: 0 }}>查詢「{word}」...</p>
+            ? <p style={{ color: 'var(--text-muted)', margin: 0, padding: 16 }}>查詢「{word}」...</p>
             : lookup && (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ padding: 16 }}>
+                {/* 單字標題列 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <div>
-                    <strong style={{ fontSize: 18 }}>{word}</strong>
-                    <span className="mono" style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 13 }}>{lookup.phonetic}</span>
+                    <strong style={{ fontSize: 20 }}>{word}</strong>
+                    <span className="mono" style={{ color: 'var(--text-muted)', marginLeft: 8, fontSize: 14 }}>{lookup.phonetic}</span>
                   </div>
                   <button onClick={saveWord} disabled={saved.has(word.toLowerCase())}
-                    style={{ background: saved.has(word.toLowerCase()) ? 'var(--bg-tertiary)' : 'var(--accent)', color: saved.has(word.toLowerCase()) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}>
+                    style={{ background: saved.has(word.toLowerCase()) ? 'var(--bg-tertiary)' : 'var(--accent)', color: saved.has(word.toLowerCase()) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500, flexShrink: 0 }}>
                     {saved.has(word.toLowerCase()) ? '已儲存' : '加入單字庫'}
                   </button>
                 </div>
-                <p style={{ margin: '0 0 4px', fontSize: 16 }}>{lookup.definition}</p>
-                <p style={{ margin: 0, fontSize: 15, color: 'var(--text-muted)', fontStyle: 'italic' }}>{lookup.example}</p>
-              </>
+
+                {/* 定義 */}
+                <p style={{ margin: '0 0 12px', fontSize: 16 }}>{lookup.definition}</p>
+
+                {/* 例句區塊 */}
+                <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, borderLeft: '3px solid var(--accent)' }}>
+                  <p style={{ margin: '0 0 4px', fontSize: 15, fontStyle: 'italic', color: 'var(--text-primary)' }}>{lookup.example}</p>
+                  {lookup.example_zh && <p style={{ margin: '0 0 6px', fontSize: 14, color: 'var(--text-muted)' }}>{lookup.example_zh}</p>}
+                  {lookup.example_breakdown && (
+                    <p style={{ margin: 0, fontSize: 13, color: 'var(--accent)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                      解析：{lookup.example_breakdown}
+                    </p>
+                  )}
+                </div>
+
+                {/* 常見片語 */}
+                {lookup.phrases?.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>常見片語</p>
+                    {lookup.phrases.map((ph, i) => (
+                      <p key={i} style={{ margin: '0 0 3px', fontSize: 14, color: 'var(--text-muted)' }}>• {ph}</p>
+                    ))}
+                  </div>
+                )}
+
+                {/* 口語用法 */}
+                {lookup.informal && (
+                  <div>
+                    <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>口語用法</p>
+                    <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>{lookup.informal}</p>
+                  </div>
+                )}
+              </div>
             )}
         </div>
       )}

@@ -19,6 +19,9 @@ export default function VocabPage() {
   const [np, setNp] = useState('');
   const [ne, setNe] = useState('');
   const [looking, setLooking] = useState(false);
+  const [nextraBreakdown, setNextraBreakdown] = useState('');
+  const [nextraPhrases, setNextraPhrases] = useState<string[]>([]);
+  const [nextraInformal, setNextraInformal] = useState('');
 
   const cur = due[idx];
 
@@ -29,9 +32,12 @@ export default function VocabPage() {
     if (!nw.trim()) return;
     setLooking(true);
     try {
-      const raw = await callAI({ messages: [{ role:'user', content:`Look up "${nw}". JSON only: {"definition":"繁中 (詞性)","phonetic":"/IPA/","example":"example"}` }] });
-      const p = extractJSON<{ definition?: string; phonetic?: string; example?: string }>(raw);
+      const raw = await callAI({ messages: [{ role:'user', content:`Look up "${nw}". Return JSON only: {"definition":"繁中定義 (詞性)","phonetic":"/IPA/","example":"自然英文例句","example_zh":"例句中文翻譯","example_breakdown":"例句語法結構解析（繁中）","phrases":["常見片語: 意思"],"informal":"口語用法（若無則空字串）"}` }] });
+      const p = extractJSON<{ definition?: string; phonetic?: string; example?: string; example_zh?: string; example_breakdown?: string; phrases?: string[]; informal?: string }>(raw);
       setNd(p.definition??''); setNp(p.phonetic??''); setNe(p.example??'');
+      setNextraBreakdown(p.example_breakdown??'');
+      setNextraPhrases(Array.isArray(p.phrases) ? p.phrases : []);
+      setNextraInformal(p.informal??'');
     } catch {} finally { setLooking(false); }
   };
 
@@ -39,6 +45,7 @@ export default function VocabPage() {
     if (!nw.trim() || !db) return;
     await addVocab(db, { word:nw, definition:nd, phonetic:np, example:ne, srsLevel:0, nextReview:Date.now(), createdAt:Date.now() });
     setNw(''); setNd(''); setNp(''); setNe('');
+    setNextraBreakdown(''); setNextraPhrases([]); setNextraInformal('');
   };
 
   const tb = (t: Tab, label: string) => ({
@@ -113,6 +120,32 @@ export default function VocabPage() {
           <button onClick={saveNew} disabled={!nw.trim()} style={{ padding:12, background:'var(--accent)', border:'none', borderRadius:'var(--radius)', color:'#fff', cursor:'pointer', fontFamily:'inherit', fontWeight:600, fontSize:17 }}>
             加入單字庫
           </button>
+
+          {/* 延伸資訊（自動查詢後顯示） */}
+          {(nextraBreakdown || nextraPhrases.length > 0 || nextraInformal) && (
+            <div style={{ marginTop:4, background:'var(--bg-primary)', borderRadius:'var(--radius)', border:'1px solid var(--border)', padding:14, display:'flex', flexDirection:'column', gap:12 }}>
+              {nextraBreakdown && (
+                <div>
+                  <p style={{ margin:'0 0 4px', fontSize:12, fontWeight:600, color:'var(--text-subtle)', textTransform:'uppercase', letterSpacing:1 }}>例句解析</p>
+                  <p style={{ margin:0, fontSize:15, color:'var(--text-muted)', lineHeight:1.7 }}>{ne && <span style={{ fontStyle:'italic', color:'var(--text-primary)' }}>{ne}<br/></span>}{nextraBreakdown}</p>
+                </div>
+              )}
+              {nextraPhrases.length > 0 && (
+                <div>
+                  <p style={{ margin:'0 0 6px', fontSize:12, fontWeight:600, color:'var(--text-subtle)', textTransform:'uppercase', letterSpacing:1 }}>常見片語</p>
+                  {nextraPhrases.map((ph, i) => (
+                    <p key={i} style={{ margin:'0 0 3px', fontSize:15, color:'var(--text-muted)' }}>• {ph}</p>
+                  ))}
+                </div>
+              )}
+              {nextraInformal && (
+                <div>
+                  <p style={{ margin:'0 0 4px', fontSize:12, fontWeight:600, color:'var(--text-subtle)', textTransform:'uppercase', letterSpacing:1 }}>口語用法</p>
+                  <p style={{ margin:0, fontSize:15, color:'var(--text-muted)' }}>{nextraInformal}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
