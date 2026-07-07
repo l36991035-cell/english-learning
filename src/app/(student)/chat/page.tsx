@@ -24,7 +24,7 @@ export default function ChatPage() {
 
   const bottom = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const sendTextRef = useRef<(text: string) => Promise<void>>();
+  const sendTextRef = useRef<((text: string) => Promise<void>) | undefined>(undefined);
   const voiceModeRef = useRef(false);
   const loadingRef = useRef(false);
 
