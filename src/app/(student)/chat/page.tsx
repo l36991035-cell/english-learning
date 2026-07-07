@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { callAI as callWorkerAI } from '@/lib/ai';
+import { callAI as callWorkerAI, extractJSON } from '@/lib/ai';
 
 const TOPICS = ['Daily Life','Travel','Food','Work','Hobbies','News','Culture','Technology'];
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -21,6 +21,9 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  const [translations, setTranslations] = useState<Record<number, string>>({});
+  const [translating, setTranslating] = useState<Record<number, boolean>>({});
+  const [suggestions, setSuggestions] = useState<string[]>([]);
 
   const bottom = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -56,19 +59,50 @@ export default function ChatPage() {
     window.speechSynthesis.speak(u);
   }, [startListening]);
 
+  const translateMsg = async (idx: number, content: string) => {
+    if (translations[idx]) {
+      setTranslations(prev => { const n = {...prev}; delete n[idx]; return n; });
+      return;
+    }
+    setTranslating(prev => ({...prev, [idx]: true}));
+    try {
+      const englishPart = content.split('小提示')[0].trim();
+      const result = await callWorkerAI({
+        messages: [{ role: 'user', content: `Translate to Traditional Chinese (繁體中文). Output the translation only, no explanation:\n\n${englishPart}` }]
+      });
+      setTranslations(prev => ({...prev, [idx]: result}));
+    } catch {} finally {
+      setTranslating(prev => ({...prev, [idx]: false}));
+    }
+  };
+
+  const fetchSuggestions = async (replyContent: string) => {
+    try {
+      const english = replyContent.split('小提示')[0].trim();
+      const raw = await callWorkerAI({
+        messages: [{ role: 'user', content: `The AI conversation partner just said: "${english}"\n\nGive 3 short natural English replies a language learner could say. Each under 12 words. Return JSON array only: ["reply1","reply2","reply3"]` }]
+      });
+      const arr = extractJSON<string[]>(raw);
+      if (Array.isArray(arr)) setSuggestions(arr);
+    } catch {}
+  };
+
   const sendText = useCallback(async (text: string) => {
     if (!text.trim() || loadingRef.current) return;
     const next: Msg[] = [...msgs, { role: 'user', content: text.trim() }];
     setMsgs(next);
     setInput('');
+    setSuggestions([]);
     loadingRef.current = true;
     setLoading(true);
     try {
       const reply = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(topic || 'General'), messages: next });
-      setMsgs([...next, { role: 'assistant', content: reply }]);
+      const newMsgs = [...next, { role: 'assistant' as const, content: reply }];
+      setMsgs(newMsgs);
       loadingRef.current = false;
       setLoading(false);
-      speak(reply, true); // always pass autoListen; speak() checks voiceModeRef internally
+      speak(reply, true);
+      fetchSuggestions(reply);
     } catch {
       loadingRef.current = false;
       setLoading(false);
@@ -77,7 +111,6 @@ export default function ChatPage() {
 
   useEffect(() => { sendTextRef.current = sendText; }, [sendText]);
 
-  // Setup speech recognition once (zh-TW supports Chinese + English mixing)
   useEffect(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) return;
@@ -127,12 +160,15 @@ export default function ChatPage() {
       loadingRef.current = false;
       setLoading(false);
       speak(reply, true);
+      fetchSuggestions(reply);
     } catch {
       setTopic('');
       loadingRef.current = false;
       setLoading(false);
     }
   };
+
+  const smallBtn = { background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-muted)', padding: '2px 6px', borderRadius: 4, fontFamily: 'inherit' };
 
   if (!topic) return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto' }}>
@@ -164,14 +200,13 @@ export default function ChatPage() {
             style={{ padding: '6px 12px', background: voiceMode ? '#d1fae5' : 'var(--bg-primary)', border: `1px solid ${voiceMode ? '#6ee7b7' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: voiceMode ? '#065f46' : 'var(--text-muted)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>
             {voiceMode ? '語音模式 ON' : '語音模式'}
           </button>
-          <button onClick={() => { setTopic(''); setMsgs([]); setVoiceMode(false); voiceModeRef.current = false; window.speechSynthesis.cancel(); try { recognitionRef.current?.stop(); } catch {} }}
+          <button onClick={() => { setTopic(''); setMsgs([]); setVoiceMode(false); setSuggestions([]); setTranslations({}); voiceModeRef.current = false; window.speechSynthesis.cancel(); try { recognitionRef.current?.stop(); } catch {} }}
             style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
             換主題
           </button>
         </div>
       </div>
 
-      {/* Voice mode hint bar */}
       {voiceMode && (
         <div style={{ padding: '7px 20px', background: '#ecfdf5', borderBottom: '1px solid #a7f3d0', fontSize: 13, color: '#065f46', textAlign: 'center' }}>
           支援中英文混說 — AI 說完後自動開始聆聽你的回答
@@ -179,12 +214,27 @@ export default function ChatPage() {
       )}
 
       {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: 84, display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: 140, display: 'flex', flexDirection: 'column', gap: 12 }}>
         {msgs.map((m, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{ maxWidth: '80%', padding: '14px 18px', borderRadius: 'var(--radius)', fontSize: 17, lineHeight: 1.7, background: m.role === 'user' ? 'var(--accent)' : 'var(--bg-secondary)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', border: m.role === 'assistant' ? '1px solid var(--border)' : 'none', whiteSpace: 'pre-wrap' }}>
               {m.content}
             </div>
+            {m.role === 'assistant' && (
+              <>
+                <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                  <button onClick={() => speak(m.content)} style={smallBtn}>🔊 重播</button>
+                  <button onClick={() => translateMsg(i, m.content)} style={{ ...smallBtn, color: translating[i] ? 'var(--accent)' : translations[i] ? 'var(--accent)' : 'var(--text-muted)' }}>
+                    {translating[i] ? '翻譯中...' : translations[i] ? '隱藏翻譯' : '🇹🇼 看中文'}
+                  </button>
+                </div>
+                {translations[i] && (
+                  <div style={{ maxWidth: '80%', marginTop: 4, padding: '10px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #a7f3d0', color: '#065f46', fontSize: 15, lineHeight: 1.65 }}>
+                    {translations[i]}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         ))}
         {loading && (
@@ -202,21 +252,36 @@ export default function ChatPage() {
         <div ref={bottom} />
       </div>
 
-      {/* Input bar */}
-      <div style={{ padding: '10px 16px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, position: 'fixed', bottom: 0, left: 0, right: 0 }}>
-        <input value={input} onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-          placeholder={listening ? '聆聽中...' : '打字或按語音...'}
-          disabled={loading || listening}
-          style={{ flex: 1, padding: '12px 14px', background: 'var(--bg-primary)', border: `1px solid ${listening ? '#e53e3e' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: 17 }} />
-        <button onClick={toggleListen} disabled={loading}
-          style={{ padding: '10px 14px', minWidth: 52, background: listening ? '#e53e3e' : 'var(--bg-primary)', border: `1px solid ${listening ? '#e53e3e' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: listening ? '#fff' : 'var(--text-muted)', cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>
-          {listening ? '停止' : '語音'}
-        </button>
-        <button onClick={send} disabled={loading || !input.trim() || listening}
-          style={{ padding: '10px 18px', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 17 }}>
-          送出
-        </button>
+      {/* Bottom area: suggestions + input */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
+        {/* Suggested replies */}
+        {suggestions.length > 0 && !loading && (
+          <div style={{ padding: '8px 16px 4px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-subtle)', alignSelf: 'center', marginRight: 2 }}>建議回覆：</span>
+            {suggestions.map((s, i) => (
+              <button key={i} onClick={() => { setSuggestions([]); sendText(s); }}
+                style={{ padding: '6px 14px', background: 'var(--bg-primary)', border: '1px solid var(--border)', borderRadius: 20, cursor: 'pointer', fontSize: 14, fontFamily: 'inherit', color: 'var(--text-primary)', fontWeight: 500 }}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Input bar */}
+        <div style={{ padding: '10px 16px', display: 'flex', gap: 8 }}>
+          <input value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+            placeholder={listening ? '聆聽中...' : '打字或按語音...'}
+            disabled={loading || listening}
+            style={{ flex: 1, padding: '12px 14px', background: 'var(--bg-primary)', border: `1px solid ${listening ? '#e53e3e' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: 'var(--text-primary)', fontFamily: 'inherit', fontSize: 17 }} />
+          <button onClick={toggleListen} disabled={loading}
+            style={{ padding: '10px 14px', minWidth: 52, background: listening ? '#e53e3e' : 'var(--bg-primary)', border: `1px solid ${listening ? '#e53e3e' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: listening ? '#fff' : 'var(--text-muted)', cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 600 }}>
+            {listening ? '停止' : '語音'}
+          </button>
+          <button onClick={send} disabled={loading || !input.trim() || listening}
+            style={{ padding: '10px 18px', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 17 }}>
+            送出
+          </button>
+        </div>
       </div>
     </div>
   );
