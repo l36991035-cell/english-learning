@@ -30,3 +30,18 @@ export interface Student {
   name: string;
   createdAt: number;
 }
+
+export type ChunkRating = 1 | 2 | 3 | 4 | 5;
+
+export interface ChunkEntry {
+  id?: number;
+  original: string;      // 使用者原本說的 / 文章中的原始片語
+  chunk: string;         // 推薦的 chunk 表達
+  zh: string;            // 中文意思
+  why: string;           // 為什麼更自然
+  rating: ChunkRating;   // 1-5 星
+  examples: string[];    // 例句陣列
+  category: string;      // e.g. "Daily Conversation"
+  source: 'chat' | 'article'; // 來源
+  createdAt: number;
+}

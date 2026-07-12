@@ -5,11 +5,12 @@ import { useEffect } from 'react';
 import { useStudent } from '@/context/StudentContext';
 
 const TABS = [
-  { href: '/input',   label: '新增'  },
-  { href: '/library', label: '文章庫' },
-  { href: '/read',    label: '閱讀'  },
-  { href: '/vocab',   label: '單字庫' },
-  { href: '/chat',    label: '對話'  },
+  { href: '/input',   label: '新增'   },
+  { href: '/library', label: '文章庫'  },
+  { href: '/read',    label: '閱讀'   },
+  { href: '/vocab',   label: '單字庫'  },
+  { href: '/chat',    label: '對話'   },
+  { href: '/chunks',  label: 'Chunk庫' },
 ];
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
@@ -40,7 +41,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           {TABS.map(t => (
             <Link key={t.href} href={t.href} style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: 500, textDecoration: 'none',
+              fontSize: 11, fontWeight: 500, textDecoration: 'none',
               color: path.startsWith(t.href) ? 'var(--accent)' : 'var(--text-muted)',
               borderBottom: path.startsWith(t.href) ? '2px solid var(--accent)' : '2px solid transparent',
               transition: 'color 0.15s',

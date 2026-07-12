@@ -3,24 +3,45 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { callAI as callWorkerAI, extractJSON } from '@/lib/ai';
 import { useStudent } from '@/context/StudentContext';
 import { addVocab } from '@/lib/db/vocabulary';
+import { addChunk } from '@/lib/db/chunks';
+import type { ChunkEntry } from '@/types';
 
 const TOPICS = ['Daily Life','Travel','Food','Work','Hobbies','News','Culture','Technology'];
 type Msg = { role: 'user' | 'assistant'; content: string };
 type Lookup = { definition: string; phonetic: string; example: string; example_zh: string; example_breakdown: string; phrases: string[]; informal: string };
+type ChunkData = { original: string; chunk: string; zh: string; why: string; rating: 1|2|3|4|5; examples: string[]; category: string };
 
 const SYSTEM = (topic: string) =>
   `You are a friendly English conversation partner for a Mandarin speaker practicing English. Topic: ${topic}.
+
+Rules:
 - Keep each reply to 2–3 sentences
 - At the end of each reply, add ONE "小提示" in Traditional Chinese only when needed:
   * Grammar error → e.g. "小提示：應說 X 而非 Y"
-  * Correct but unnatural or too formal → e.g. "小提示：'How are you?' 沒錯，但口語更常說 'How's it going?' 或 'What's up?'"
+  * Correct but unnatural → e.g. "小提示：口語更常說 'How's it going?'"
   * If the user's English is already natural, skip the 小提示
-- End with a follow-up question`;
+- End with a follow-up question
+
+IMPORTANT: You must ALWAYS return valid JSON in this exact format:
+{"reply":"your conversational reply here","chunk":null}
+
+OR if you find a chunk worth teaching:
+{"reply":"your conversational reply here","chunk":{"original":"user phrase","chunk":"better expression","zh":"中文意思","why":"為什麼更自然（繁中）","rating":5,"examples":["example 1","example 2","example 3"],"category":"Daily Conversation"}}
+
+Chunk rules:
+- Only suggest a chunk when it's genuinely valuable (high-frequency, natural, native-speaker expression)
+- Return chunk: null if the user's expression is already natural, or if you suggested a chunk in the last 2 exchanges
+- Rating: 5=extremely common daily use, 4=very common, 3=useful, 2=occasional, 1=rare
+- Prioritize: conversational phrases > collocations > idioms. Avoid formal/academic expressions.`;
 
 export default function ChatPage() {
   const { db } = useStudent();
   const [topic, setTopic] = useState('');
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [chunkMap, setChunkMap] = useState<Record<number, ChunkData>>({});
+  const [expandedChunks, setExpandedChunks] = useState<Record<number, boolean>>({});
+  const [savedChunkIdxs, setSavedChunkIdxs] = useState<Set<number>>(new Set());
+  const [challengeChunk, setChallengeChunk] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [listening, setListening] = useState(false);
@@ -104,7 +125,19 @@ export default function ChatPage() {
     setChatWord(null); setChatLookup(null);
   };
 
-  // Render AI message text with clickable English words
+  const saveChunk = async (idx: number, chunk: ChunkData) => {
+    if (!db) return;
+    const entry: Omit<ChunkEntry, 'id'> = { ...chunk, source: 'chat', createdAt: Date.now() };
+    await addChunk(db, entry);
+    setSavedChunkIdxs(prev => new Set([...prev, idx]));
+    showToast(`「${chunk.chunk}」已加入 Chunk 庫`);
+  };
+
+  const triggerPractice = (chunk: string) => {
+    setChallengeChunk(chunk);
+    showToast(`練習模式：試著在下一句用上它！`);
+  };
+
   const renderMsgText = (content: string) => {
     const [english, ...rest] = content.split('小提示');
     const tokens = english.split(/(\s+)/);
@@ -129,19 +162,90 @@ export default function ChatPage() {
     );
   };
 
+  const STARS = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+  const renderChunkCard = (idx: number, chunk: ChunkData) => {
+    const expanded = expandedChunks[idx];
+    const saved = savedChunkIdxs.has(idx);
+    return (
+      <div style={{ marginTop: 6, maxWidth: '80%', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+        {/* 收折摘要列 */}
+        <button
+          onClick={() => setExpandedChunks(p => ({ ...p, [idx]: !p[idx] }))}
+          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+        >
+          <span style={{ fontSize: 15 }}>💡</span>
+          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--accent)', flex: 1 }}>{chunk.chunk}</span>
+          <span style={{ fontSize: 12, color: '#f59e0b', letterSpacing: 1 }}>{STARS(chunk.rating)}</span>
+          <span style={{ fontSize: 12, color: 'var(--text-subtle)', marginLeft: 4 }}>{expanded ? '▲' : '▼'}</span>
+        </button>
+
+        {/* 展開內容 */}
+        {expanded && (
+          <div style={{ padding: '0 12px 12px', borderTop: '1px solid var(--border)' }}>
+            <p style={{ margin: '10px 0 4px', fontSize: 13, color: 'var(--text-muted)' }}>
+              <span style={{ color: 'var(--text-subtle)' }}>原本：</span> {chunk.original}
+            </p>
+            <p style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+              → {chunk.chunk} <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 14 }}>（{chunk.zh}）</span>
+            </p>
+            <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>{chunk.why}</p>
+            {chunk.examples.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                {chunk.examples.map((ex, i) => (
+                  <p key={i} style={{ margin: '0 0 3px', fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>• {ex}</p>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => !saved && saveChunk(idx, chunk)}
+                disabled={saved}
+                style={{ padding: '6px 14px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', cursor: saved ? 'default' : 'pointer', background: saved ? 'var(--bg-tertiary)' : 'var(--accent)', color: saved ? 'var(--text-muted)' : '#fff' }}
+              >
+                {saved ? '已收藏' : '加入 Chunk 庫'}
+              </button>
+              <button
+                onClick={() => triggerPractice(chunk.chunk)}
+                style={{ padding: '6px 14px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}
+              >
+                再練一次
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const sendText = useCallback(async (text: string) => {
     if (!text.trim() || loadingRef.current) return;
-    const next: Msg[] = [...msgs, { role: 'user', content: text.trim() }];
-    setMsgs(next); setInput(''); setSuggestions([]);
+    const userContent = challengeChunk
+      ? `${text.trim()}\n[Practice note: Check if user used "${challengeChunk}" naturally. If yes, praise it briefly.]`
+      : text.trim();
+    const displayMsg: Msg = { role: 'user', content: text.trim() };
+    const next: Msg[] = [...msgs, { role: 'user', content: userContent }];
+    setMsgs(prev => [...prev, displayMsg]);
+    setInput(''); setSuggestions([]); setChallengeChunk(null);
     loadingRef.current = true; setLoading(true);
     try {
-      const reply = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(topic || 'General'), messages: next });
-      setMsgs([...next, { role: 'assistant' as const, content: reply }]);
+      const raw = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(topic || 'General'), messages: next });
+      let reply = raw;
+      let chunk: ChunkData | null = null;
+      try {
+        const parsed = extractJSON<{ reply: string; chunk: ChunkData | null }>(raw);
+        reply = parsed.reply ?? raw;
+        chunk = parsed.chunk ?? null;
+      } catch { /* fallback: treat raw as plain reply */ }
+
+      const assistantIdx = next.length; // index in msgs after appending
+      setMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
+      if (chunk) setChunkMap(p => ({ ...p, [assistantIdx]: chunk! }));
       loadingRef.current = false; setLoading(false);
       speak(reply, true);
       fetchSuggestions(reply);
     } catch { loadingRef.current = false; setLoading(false); }
-  }, [msgs, topic, speak]);
+  }, [msgs, topic, speak, challengeChunk]);
 
   useEffect(() => { sendTextRef.current = sendText; }, [sendText]);
 
@@ -171,7 +275,12 @@ export default function ChatPage() {
     setTopic(t); loadingRef.current = true; setLoading(true);
     try {
       const init: Msg = { role: 'user', content: "Hello! Let's start." };
-      const reply = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(t), messages: [init] });
+      const raw = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(t), messages: [init] });
+      let reply = raw;
+      try {
+        const parsed = extractJSON<{ reply: string; chunk: ChunkData | null }>(raw);
+        reply = parsed.reply ?? raw;
+      } catch {}
       setMsgs([init, { role: 'assistant' as const, content: reply }]);
       loadingRef.current = false; setLoading(false);
       speak(reply, true); fetchSuggestions(reply);
@@ -195,6 +304,9 @@ export default function ChatPage() {
     </div>
   );
 
+  // Build display messages (user messages only show trimmed content)
+  const displayMsgs = msgs.filter(m => !m.content.includes('[Practice note:'));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 52px)' }}>
       {/* Header */}
@@ -210,7 +322,7 @@ export default function ChatPage() {
             style={{ padding: '6px 12px', background: voiceMode ? '#d1fae5' : 'var(--bg-primary)', border: `1px solid ${voiceMode ? '#6ee7b7' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: voiceMode ? '#065f46' : 'var(--text-muted)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600 }}>
             {voiceMode ? '語音模式 ON' : '語音模式'}
           </button>
-          <button onClick={() => { setTopic(''); setMsgs([]); setVoiceMode(false); setSuggestions([]); setTranslations({}); setChatWord(null); voiceModeRef.current = false; window.speechSynthesis.cancel(); try { recognitionRef.current?.stop(); } catch {} }}
+          <button onClick={() => { setTopic(''); setMsgs([]); setVoiceMode(false); setSuggestions([]); setTranslations({}); setChatWord(null); setChunkMap({}); setExpandedChunks({}); setSavedChunkIdxs(new Set()); setChallengeChunk(null); voiceModeRef.current = false; window.speechSynthesis.cancel(); try { recognitionRef.current?.stop(); } catch {} }}
             style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 14 }}>
             換主題
           </button>
@@ -225,28 +337,32 @@ export default function ChatPage() {
 
       {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', paddingBottom: 150, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {msgs.map((m, i) => (
-          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
-            <div style={{ maxWidth: '80%', padding: '14px 18px', borderRadius: 'var(--radius)', fontSize: 17, lineHeight: 1.7, background: m.role === 'user' ? 'var(--accent)' : 'var(--bg-secondary)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', border: m.role === 'assistant' ? '1px solid var(--border)' : 'none', whiteSpace: 'pre-wrap' }}>
-              {m.role === 'assistant' ? renderMsgText(m.content) : m.content}
-            </div>
-            {m.role === 'assistant' && (
-              <>
-                <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                  <button onClick={() => speak(m.content)} style={smallBtn}>🔊 重播</button>
-                  <button onClick={() => translateMsg(i, m.content)} style={{ ...smallBtn, color: translating[i] || translations[i] ? 'var(--accent)' : 'var(--text-muted)' }}>
-                    {translating[i] ? '翻譯中...' : translations[i] ? '隱藏翻譯' : '🇹🇼 看中文'}
-                  </button>
-                </div>
-                {translations[i] && (
-                  <div style={{ maxWidth: '80%', marginTop: 4, padding: '10px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #a7f3d0', color: '#065f46', fontSize: 15, lineHeight: 1.65 }}>
-                    {translations[i]}
+        {displayMsgs.map((m, i) => {
+          const chunkData = m.role === 'assistant' ? chunkMap[i] : undefined;
+          return (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+              <div style={{ maxWidth: '80%', padding: '14px 18px', borderRadius: 'var(--radius)', fontSize: 17, lineHeight: 1.7, background: m.role === 'user' ? 'var(--accent)' : 'var(--bg-secondary)', color: m.role === 'user' ? '#fff' : 'var(--text-primary)', border: m.role === 'assistant' ? '1px solid var(--border)' : 'none', whiteSpace: 'pre-wrap' }}>
+                {m.role === 'assistant' ? renderMsgText(m.content) : m.content}
+              </div>
+              {m.role === 'assistant' && (
+                <>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                    <button onClick={() => speak(m.content)} style={smallBtn}>🔊 重播</button>
+                    <button onClick={() => translateMsg(i, m.content)} style={{ ...smallBtn, color: translating[i] || translations[i] ? 'var(--accent)' : 'var(--text-muted)' }}>
+                      {translating[i] ? '翻譯中...' : translations[i] ? '隱藏翻譯' : '🇹🇼 看中文'}
+                    </button>
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        ))}
+                  {translations[i] && (
+                    <div style={{ maxWidth: '80%', marginTop: 4, padding: '10px 14px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #a7f3d0', color: '#065f46', fontSize: 15, lineHeight: 1.65 }}>
+                      {translations[i]}
+                    </div>
+                  )}
+                  {chunkData && renderChunkCard(i, chunkData)}
+                </>
+              )}
+            </div>
+          );
+        })}
         {loading && (
           <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
             <div style={{ padding: '14px 18px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 17 }}>...</div>
@@ -322,8 +438,18 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Bottom: suggestions + input */}
+      {/* Bottom: challenge chip + suggestions + input */}
       <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
+        {challengeChunk && (
+          <div style={{ padding: '6px 16px 2px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>練習：</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent)', background: '#d1fae5', padding: '3px 10px', borderRadius: 20 }}>
+              {challengeChunk}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>試著在下一句用上它</span>
+            <button onClick={() => setChallengeChunk(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-subtle)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+          </div>
+        )}
         {suggestions.length > 0 && !loading && (
           <div style={{ padding: '8px 16px 4px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 12, color: 'var(--text-subtle)', alignSelf: 'center', marginRight: 2 }}>建議回覆：</span>

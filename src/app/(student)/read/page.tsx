@@ -5,11 +5,13 @@ import { getArticle, updateArticle } from '@/lib/db/articles';
 import { addVocab, getAllVocab } from '@/lib/db/vocabulary';
 import { useStudent } from '@/context/StudentContext';
 import { callAI, extractJSON } from '@/lib/ai';
-import type { Article } from '@/types';
+import type { Article, ChunkEntry } from '@/types';
+import { addChunk } from '@/lib/db/chunks';
 
 type Lookup = { definition: string; phonetic: string; example: string; example_zh: string; example_breakdown: string; phrases: string[]; informal: string };
 type Analysis = { pattern: string; breakdown: string };
-type ViewMode = 'full' | 'study';
+type ViewMode = 'full' | 'study' | 'chunks';
+type ChunkData = { original: string; chunk: string; zh: string; why: string; rating: 1|2|3|4|5; examples: string[]; category: string };
 
 function ReadPageInner() {
   const params = useSearchParams();
@@ -28,6 +30,10 @@ function ReadPageInner() {
   const [toast, setToast] = useState('');
   const [analyses, setAnalyses] = useState<Record<number, Analysis>>({});
   const [analyzing, setAnalyzing] = useState<Record<number, boolean>>({});
+  const [articleChunks, setArticleChunks] = useState<ChunkData[]>([]);
+  const [fetchingChunks, setFetchingChunks] = useState(false);
+  const [expandedChunks, setExpandedChunks] = useState<Record<number, boolean>>({});
+  const [savedChunkIdxs, setSavedChunkIdxs] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!id || !db) return;
@@ -100,6 +106,44 @@ function ReadPageInner() {
     }
   };
 
+  const fetchArticleChunks = async () => {
+    if (!article) return;
+    setFetchingChunks(true);
+    setArticleChunks([]);
+    setExpandedChunks({});
+    setSavedChunkIdxs(new Set());
+    try {
+      const raw = await callAI({
+        messages: [{
+          role: 'user',
+          content: `Analyze this English article and find 3–6 high-value chunks (natural expressions, collocations, conversational phrases) worth learning.
+Return JSON array only:
+[{"original":"exact phrase from text","chunk":"the chunk expression","zh":"中文意思","why":"為什麼值得學（繁中，1-2句）","rating":5,"examples":["例句1","例句2","例句3"],"category":"Daily Conversation"}]
+
+Rating: 5=extremely common daily use, 4=very common, 3=useful.
+Only include rating 3+. Prioritize chunks a learner can reuse in conversation.
+
+Article:
+${article.text.slice(0, 3000)}`,
+        }],
+      });
+      const parsed = extractJSON<ChunkData[]>(raw);
+      if (Array.isArray(parsed)) setArticleChunks(parsed);
+    } catch {
+      showToast('分析失敗，請重試');
+    } finally {
+      setFetchingChunks(false);
+    }
+  };
+
+  const saveArticleChunk = async (idx: number, chunk: ChunkData) => {
+    if (!db) return;
+    const entry: Omit<ChunkEntry, 'id'> = { ...chunk, source: 'article', createdAt: Date.now() };
+    await addChunk(db, entry);
+    setSavedChunkIdxs(prev => new Set([...prev, idx]));
+    showToast(`「${chunk.chunk}」已加入 Chunk 庫`);
+  };
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
@@ -150,9 +194,12 @@ function ReadPageInner() {
       <p style={{ color: 'var(--text-muted)', fontSize: 15, marginBottom: 16 }}>{article.topic} · {article.wordCount} 字</p>
 
       {/* 模式切換 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <button onClick={() => setViewMode('full')} style={modeBtn(viewMode === 'full')}>全文閱讀</button>
         <button onClick={() => setViewMode('study')} style={modeBtn(viewMode === 'study')}>逐句學習</button>
+        <button onClick={() => { setViewMode('chunks'); if (articleChunks.length === 0 && !fetchingChunks) fetchArticleChunks(); }} style={modeBtn(viewMode === 'chunks')}>
+          {fetchingChunks ? '分析中...' : '✨ Chunks'}
+        </button>
       </div>
 
       {/* ── 全文閱讀 ── */}
@@ -251,6 +298,74 @@ function ReadPageInner() {
             ))}
           </div>
         </>
+      )}
+
+      {/* ── Chunks ── */}
+      {viewMode === 'chunks' && (
+        <div>
+          {fetchingChunks && (
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: 40 }}>AI 正在分析文章 Chunks...</p>
+          )}
+          {!fetchingChunks && articleChunks.length === 0 && (
+            <div style={{ textAlign: 'center', marginTop: 40 }}>
+              <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>點擊下方按鈕讓 AI 找出這篇文章值得學習的 Chunk</p>
+              <button onClick={fetchArticleChunks} style={{ padding: '10px 24px', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, fontSize: 16 }}>
+                ✨ 找 Chunks
+              </button>
+            </div>
+          )}
+          {articleChunks.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {articleChunks.map((chunk, i) => {
+                const expanded = expandedChunks[i];
+                const saved = savedChunkIdxs.has(i);
+                const STARS = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
+                return (
+                  <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-secondary)' }}>
+                    <button
+                      onClick={() => setExpandedChunks(p => ({ ...p, [i]: !p[i] }))}
+                      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      <span style={{ fontSize: 16 }}>💡</span>
+                      <span style={{ fontWeight: 600, fontSize: 15, color: 'var(--accent)', flex: 1 }}>{chunk.chunk}</span>
+                      <span style={{ fontSize: 12, color: '#f59e0b', letterSpacing: 1 }}>{STARS(chunk.rating)}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-subtle)', marginLeft: 4 }}>{expanded ? '▲' : '▼'}</span>
+                    </button>
+                    {expanded && (
+                      <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)' }}>
+                        <p style={{ margin: '10px 0 4px', fontSize: 13, color: 'var(--text-muted)' }}>
+                          <span style={{ color: 'var(--text-subtle)' }}>原文：</span>
+                          <em>{chunk.original}</em>
+                        </p>
+                        <p style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {chunk.chunk} <span style={{ fontWeight: 400, color: 'var(--text-muted)', fontSize: 14 }}>（{chunk.zh}）</span>
+                        </p>
+                        <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>{chunk.why}</p>
+                        {chunk.examples.length > 0 && (
+                          <div style={{ marginBottom: 12 }}>
+                            {chunk.examples.map((ex, j) => (
+                              <p key={j} style={{ margin: '0 0 3px', fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>• {ex}</p>
+                            ))}
+                          </div>
+                        )}
+                        <button
+                          onClick={() => !saved && saveArticleChunk(i, chunk)}
+                          disabled={saved}
+                          style={{ padding: '7px 18px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', cursor: saved ? 'default' : 'pointer', background: saved ? 'var(--bg-tertiary)' : 'var(--accent)', color: saved ? 'var(--text-muted)' : '#fff' }}
+                        >
+                          {saved ? '已收藏' : '加入 Chunk 庫'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <button onClick={fetchArticleChunks} style={{ marginTop: 4, padding: '8px', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-muted)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13 }}>
+                重新分析
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* 單字查詢彈窗 */}
