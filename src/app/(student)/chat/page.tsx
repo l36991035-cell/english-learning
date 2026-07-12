@@ -7,6 +7,21 @@ import { addChunk } from '@/lib/db/chunks';
 import type { ChunkEntry } from '@/types';
 
 const TOPICS = ['Daily Life','Travel','Food','Work','Hobbies','News','Culture','Technology'];
+
+function parseChatResponse(raw: string): { reply: string; chunk: ChunkData | null } {
+  // 1. Try code-fence extraction first
+  try { return extractJSON<{ reply: string; chunk: ChunkData | null }>(raw); } catch {}
+  // 2. Find the first { ... } block in the text (AI sometimes adds preamble text)
+  const start = raw.indexOf('{');
+  if (start !== -1) {
+    try {
+      const obj = JSON.parse(raw.slice(start)) as { reply?: string; chunk?: ChunkData | null };
+      if (obj.reply) return { reply: obj.reply, chunk: obj.chunk ?? null };
+    } catch {}
+  }
+  // 3. Plain-text fallback
+  return { reply: raw, chunk: null };
+}
 type Msg = { role: 'user' | 'assistant'; content: string };
 type Lookup = { definition: string; phonetic: string; example: string; example_zh: string; example_breakdown: string; phrases: string[]; informal: string };
 type ChunkData = { original: string; chunk: string; zh: string; why: string; rating: 1|2|3|4|5; examples: string[]; category: string };
@@ -230,20 +245,16 @@ export default function ChatPage() {
     loadingRef.current = true; setLoading(true);
     try {
       const raw = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(topic || 'General'), messages: next });
-      let reply = raw;
-      let chunk: ChunkData | null = null;
-      try {
-        const parsed = extractJSON<{ reply: string; chunk: ChunkData | null }>(raw);
-        reply = parsed.reply ?? raw;
-        chunk = parsed.chunk ?? null;
-      } catch { /* fallback: treat raw as plain reply */ }
+      const { reply, chunk } = parseChatResponse(raw);
+      let replyText = reply;
+      let chunkData = chunk;
 
       const assistantIdx = next.length; // index in msgs after appending
-      setMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
-      if (chunk) setChunkMap(p => ({ ...p, [assistantIdx]: chunk! }));
+      setMsgs(prev => [...prev, { role: 'assistant', content: replyText }]);
+      if (chunkData) setChunkMap(p => ({ ...p, [assistantIdx]: chunkData! }));
       loadingRef.current = false; setLoading(false);
-      speak(reply, true);
-      fetchSuggestions(reply);
+      speak(replyText, true);
+      fetchSuggestions(replyText);
     } catch { loadingRef.current = false; setLoading(false); }
   }, [msgs, topic, speak, challengeChunk]);
 
@@ -276,14 +287,10 @@ export default function ChatPage() {
     try {
       const init: Msg = { role: 'user', content: "Hello! Let's start." };
       const raw = await callWorkerAI({ model: 'claude-sonnet-4-6', system: SYSTEM(t), messages: [init] });
-      let reply = raw;
-      try {
-        const parsed = extractJSON<{ reply: string; chunk: ChunkData | null }>(raw);
-        reply = parsed.reply ?? raw;
-      } catch {}
-      setMsgs([init, { role: 'assistant' as const, content: reply }]);
+      const { reply: initReply } = parseChatResponse(raw);
+      setMsgs([init, { role: 'assistant' as const, content: initReply }]);
       loadingRef.current = false; setLoading(false);
-      speak(reply, true); fetchSuggestions(reply);
+      speak(initReply, true); fetchSuggestions(initReply);
     } catch { setTopic(''); loadingRef.current = false; setLoading(false); }
   };
 
