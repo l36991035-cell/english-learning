@@ -253,7 +253,7 @@ export default function ChatPage() {
       setMsgs(prev => [...prev, { role: 'assistant', content: replyText }]);
       if (chunkData) setChunkMap(p => ({ ...p, [assistantIdx]: chunkData! }));
       loadingRef.current = false; setLoading(false);
-      speak(replyText, true);
+      if (voiceModeRef.current) speak(replyText, true);
       fetchSuggestions(replyText);
     } catch { loadingRef.current = false; setLoading(false); }
   }, [msgs, topic, speak, challengeChunk]);
@@ -290,7 +290,8 @@ export default function ChatPage() {
       const { reply: initReply } = parseChatResponse(raw);
       setMsgs([init, { role: 'assistant' as const, content: initReply }]);
       loadingRef.current = false; setLoading(false);
-      speak(initReply, true); fetchSuggestions(initReply);
+      if (voiceModeRef.current) speak(initReply, true);
+      fetchSuggestions(initReply);
     } catch { setTopic(''); loadingRef.current = false; setLoading(false); }
   };
 
