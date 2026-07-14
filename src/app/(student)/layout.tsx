@@ -5,12 +5,13 @@ import { useEffect } from 'react';
 import { useStudent } from '@/context/StudentContext';
 
 const TABS = [
-  { href: '/input',   label: '新增'   },
-  { href: '/library', label: '文章庫'  },
-  { href: '/read',    label: '閱讀'   },
-  { href: '/vocab',   label: '單字庫'  },
-  { href: '/chat',    label: '對話'   },
-  { href: '/chunks',  label: 'Chunk庫' },
+  { href: '/input',     label: '新增'   },
+  { href: '/library',   label: '文章庫'  },
+  { href: '/read',      label: '閱讀'   },
+  { href: '/vocab',     label: '單字庫'  },
+  { href: '/chat',      label: '對話'   },
+  { href: '/translate', label: '中翻英'  },
+  { href: '/chunks',    label: 'Chunk庫' },
 ];
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {

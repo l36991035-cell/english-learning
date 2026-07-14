@@ -21,6 +21,11 @@ export function getDb(studentId: string): AppDb {
       vocab: '++id, word, srsLevel, nextReview',
       chunks: '++id, rating, createdAt',
     });
+    db.version(3).stores({
+      articles: '++id, level, createdAt',
+      vocab: '++id, word, srsLevel, nextReview',
+      chunks: '++id, rating, createdAt, nextReview',
+    });
     cache.set(studentId, db);
   }
   return cache.get(studentId)!;

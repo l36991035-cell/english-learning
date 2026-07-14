@@ -42,6 +42,8 @@ export interface ChunkEntry {
   rating: ChunkRating;   // 1-5 星
   examples: string[];    // 例句陣列
   category: string;      // e.g. "Daily Conversation"
-  source: 'chat' | 'article'; // 來源
+  source: 'chat' | 'article' | 'translation'; // 來源
+  srsLevel?: SrsLevel;   // 間隔複習等級（0-4）
+  nextReview?: number;   // 下次複習時間戳
   createdAt: number;
 }

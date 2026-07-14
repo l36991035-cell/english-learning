@@ -1,11 +1,18 @@
 'use client';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { deleteChunk } from '@/lib/db/chunks';
 import { useStudent } from '@/context/StudentContext';
 import type { ChunkRating } from '@/types';
 
 const STARS = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
+const speak = (text: string) => {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US'; u.rate = 0.9;
+  window.speechSynthesis.speak(u);
+};
 const RATING_LABEL: Record<ChunkRating, string> = {
   5: '每日必用',
   4: '非常常見',
@@ -15,6 +22,7 @@ const RATING_LABEL: Record<ChunkRating, string> = {
 };
 
 export default function ChunksPage() {
+  const router = useRouter();
   const { db } = useStudent();
   const [filterRating, setFilterRating] = useState<ChunkRating | 'all'>('all');
   const [search, setSearch] = useState('');
@@ -24,6 +32,8 @@ export default function ChunksPage() {
     () => db ? db.chunks.toArray().then(arr => arr.sort((a, b) => b.createdAt - a.createdAt)) : [],
     [db]
   ) ?? [];
+
+  const dueCount = allChunks.filter(c => !c.nextReview || c.nextReview <= Date.now()).length;
 
   const shown = allChunks.filter(c => {
     if (filterRating !== 'all' && c.rating !== filterRating) return false;
@@ -50,7 +60,16 @@ export default function ChunksPage() {
 
   return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 26, marginBottom: 6 }}>Chunk 庫</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+        <h1 style={{ fontSize: 26, margin: 0 }}>Chunk 庫</h1>
+        <button
+          onClick={() => router.push('/chunk-review')}
+          disabled={dueCount === 0}
+          style={{ padding: '8px 16px', background: dueCount > 0 ? 'var(--accent)' : 'var(--bg-tertiary)', border: 'none', borderRadius: 'var(--radius-sm)', color: dueCount > 0 ? '#fff' : 'var(--text-subtle)', cursor: dueCount > 0 ? 'pointer' : 'default', fontFamily: 'inherit', fontWeight: 600, fontSize: 14 }}
+        >
+          {dueCount > 0 ? `開始複習 (${dueCount})` : '複習完成 ✓'}
+        </button>
+      </div>
       <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 20 }}>
         共 {allChunks.length} 個 Chunk
       </p>
@@ -96,6 +115,10 @@ export default function ChunksPage() {
                     <span style={{ fontWeight: 700, fontSize: 16, color: 'var(--accent)' }}>{c.chunk}</span>
                     <span style={{ fontSize: 14, color: 'var(--text-muted)', marginLeft: 8 }}>{c.zh}</span>
                   </div>
+                  <button
+                    onClick={e => { e.stopPropagation(); speak(c.chunk); }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: '0 4px', flexShrink: 0 }}
+                  >🔊</button>
                   <span style={{ fontSize: 12, color: '#f59e0b', letterSpacing: 1, flexShrink: 0 }}>{STARS(c.rating)}</span>
                   <span style={{ fontSize: 12, color: 'var(--text-subtle)', marginLeft: 4 }}>{isExpanded ? '▲' : '▼'}</span>
                 </button>
@@ -125,7 +148,7 @@ export default function ChunksPage() {
                   )}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
                     <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'var(--bg-tertiary)', color: 'var(--text-subtle)' }}>
-                      {c.source === 'chat' ? '對話' : '文章'}
+                      {c.source === 'chat' ? '對話' : c.source === 'translation' ? '中翻英' : '文章'}
                     </span>
                     <span style={{ fontSize: 11, color: 'var(--text-subtle)' }}>{c.category}</span>
                   </div>
