@@ -43,6 +43,7 @@ export default function InputPage() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [preview, setPreview] = useState<string | null>(null);
 
   const run = async (fn: () => Promise<void>) => {
     setLoading(true);
@@ -57,10 +58,31 @@ export default function InputPage() {
       const b64 = (reader.result as string).split(',')[1];
       setStatus('OCR 識別中...');
       const extracted = await ai('Extract all English text from this image. Return text only.', b64);
-      await processAndSave(db, extracted, router, setStatus);
+      setPreview(extracted);
+      setStatus('');
     });
     reader.readAsDataURL(file);
   };
+
+  const handleExtract = () => {
+    if (!db || !url.trim()) return;
+    run(async () => {
+      setStatus(mode === 'url' ? '抓取文章...' : '擷取字幕...');
+      const prompt = mode === 'url'
+        ? `Fetch and extract the main article text from: ${url}. Return body text only, no HTML.`
+        : `Extract and clean English transcript from YouTube: ${url}. Remove timestamps, speaker labels, non-English text.`;
+      const content = await ai(prompt);
+      setPreview(content);
+      setStatus('');
+    });
+  };
+
+  const confirmAndProcess = () => {
+    if (!db || !preview?.trim()) return;
+    run(() => processAndSave(db, preview.trim(), router, setStatus));
+  };
+
+  const cancelPreview = () => { setPreview(null); setStatus(''); };
 
   const s = (active: boolean) => ({
     padding: '8px 16px', borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer',
@@ -75,6 +97,35 @@ export default function InputPage() {
     borderRadius: 'var(--radius)', color: 'var(--text-primary)',
     fontFamily: 'inherit', fontSize: 15,
   };
+
+  // 預覽確認畫面
+  if (preview !== null) {
+    return (
+      <div style={{ padding: 24, maxWidth: 640, margin: '0 auto' }}>
+        <h1 style={{ fontSize: 24, marginBottom: 8 }}>確認擷取內容</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 16 }}>
+          請刪除廣告、頁碼、導覽列等多餘內容，確認後再儲存。
+        </p>
+        <textarea
+          value={preview}
+          onChange={e => setPreview(e.target.value)}
+          style={{ ...inp, minHeight: 300, resize: 'vertical' }}
+        />
+        <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+          <button onClick={cancelPreview} style={{ ...s(false), flex: 1, padding: 12 }}>
+            ← 重新擷取
+          </button>
+          <button
+            onClick={confirmAndProcess}
+            disabled={loading || !preview.trim()}
+            style={{ ...s(true), flex: 2, padding: 12 }}
+          >
+            {loading ? status : '確認並分析儲存'}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 24, maxWidth: 640, margin: '0 auto' }}>
@@ -111,16 +162,9 @@ export default function InputPage() {
           placeholder={mode === 'url' ? 'https://...' : 'https://youtube.com/watch?v=...'}
           style={inp} />
         <button
-          onClick={() => db && run(async () => {
-            setStatus(mode === 'url' ? '抓取文章...' : '擷取字幕...');
-            const prompt = mode === 'url'
-              ? `Fetch and extract the main article text from: ${url}. Return body text only, no HTML.`
-              : `Extract and clean English transcript from YouTube: ${url}. Remove timestamps, speaker labels, non-English text.`;
-            const content = await ai(prompt);
-            await processAndSave(db, content, router, setStatus);
-          })}
+          onClick={handleExtract}
           disabled={loading || !url.trim()} style={{ ...s(true), marginTop: 12, width: '100%', padding: 12 }}>
-          {loading ? status : '擷取並儲存'}
+          {loading ? status : '擷取內容'}
         </button>
       </>}
     </div>

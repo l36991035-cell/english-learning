@@ -7,11 +7,20 @@ import { useStudent } from '@/context/StudentContext';
 import { callAI, extractJSON } from '@/lib/ai';
 import type { Article, ChunkEntry } from '@/types';
 import { addChunk } from '@/lib/db/chunks';
+import { useWordLookup } from '@/hooks/useWordLookup';
+import WordLookupPanel from '@/components/WordLookupPanel';
 
-type Lookup = { definition: string; phonetic: string; example: string; example_zh: string; example_breakdown: string; phrases: string[]; informal: string };
 type Analysis = { pattern: string; breakdown: string };
 type ViewMode = 'full' | 'study' | 'chunks';
 type ChunkData = { original: string; chunk: string; zh: string; why: string; rating: 1|2|3|4|5; examples: string[]; category: string };
+
+const speak = (text: string) => {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = 0.9;
+  window.speechSynthesis.speak(u);
+};
 
 function ReadPageInner() {
   const params = useSearchParams();
@@ -23,9 +32,6 @@ function ReadPageInner() {
   const [shown, setShown] = useState<boolean[]>([]);
   const [showFullTrans, setShowFullTrans] = useState(false);
   const [translating, setTranslating] = useState(false);
-  const [word, setWord] = useState('');
-  const [lookup, setLookup] = useState<Lookup | null>(null);
-  const [lookingUp, setLookingUp] = useState(false);
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState('');
   const [analyses, setAnalyses] = useState<Record<number, Analysis>>({});
@@ -34,6 +40,9 @@ function ReadPageInner() {
   const [fetchingChunks, setFetchingChunks] = useState(false);
   const [expandedChunks, setExpandedChunks] = useState<Record<number, boolean>>({});
   const [savedChunkIdxs, setSavedChunkIdxs] = useState<Set<number>>(new Set());
+  const [speaking, setSpeaking] = useState(false);
+
+  const { word, lookup, lookingUp, lookupWord, clear } = useWordLookup();
 
   useEffect(() => {
     if (!id || !db) return;
@@ -43,7 +52,6 @@ function ReadPageInner() {
     getAllVocab(db).then(v => setSaved(new Set(v.map(e => e.word.toLowerCase()))));
   }, [id, db]);
 
-  // 即時翻譯全文（若尚無儲存翻譯）
   const translateAll = async () => {
     if (!article || !db) return;
     setTranslating(true);
@@ -65,21 +73,7 @@ function ReadPageInner() {
     }
   };
 
-  const lookupWord = useCallback(async (raw: string) => {
-    const w = raw.replace(/[^a-zA-Z'’-]/g, '').trim();
-    if (!w || w.length < 2) return;
-    setWord(w); setLookup(null); setLookingUp(true);
-    try {
-      const result = await callAI({ messages: [{ role: 'user', content: `Look up "${w}". Return JSON only: {"definition":"繁中定義 (詞性)","phonetic":"/IPA/","example":"自然英文例句","example_zh":"例句中文翻譯","example_breakdown":"例句語法結構解析（繁中，說明主詞/動詞/受詞等）","phrases":["常見片語或搭配詞: 中文意思"],"informal":"口語或非正式用法說明（若無則空字串）"}` }] });
-      setLookup(extractJSON<Lookup>(result));
-    } catch {
-      setLookup({ definition: '查詢失敗', phonetic: '', example: '', example_zh: '', example_breakdown: '', phrases: [], informal: '' });
-    } finally {
-      setLookingUp(false);
-    }
-  }, []);
-
-  const renderWords = (text: string) =>
+  const renderWords = useCallback((text: string) =>
     text.split(/(\s+)/).map((token, i) =>
       /^\s+$/.test(token) ? token :
       <span key={i} onClick={() => lookupWord(token)}
@@ -87,7 +81,7 @@ function ReadPageInner() {
         onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
         onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
       >{token}</span>
-    );
+    ), [lookupWord]);
 
   const analyzeSentence = async (i: number, sentence: string) => {
     setAnalyzing(p => ({ ...p, [i]: true }));
@@ -160,6 +154,22 @@ ${article.text.slice(0, 3000)}`,
     setShown(new Array(article?.sentences.length ?? 0).fill(show));
   };
 
+  const speakFullArticle = () => {
+    if (!article) return;
+    if (speaking) {
+      window.speechSynthesis.cancel();
+      setSpeaking(false);
+      return;
+    }
+    setSpeaking(true);
+    const u = new SpeechSynthesisUtterance(article.text);
+    u.lang = 'en-US';
+    u.rate = 0.9;
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(u);
+  };
+
   if (!article) return <div style={{ padding: 24, color: 'var(--text-muted)' }}>載入中...</div>;
 
   const hasTranslations = article.translations.length > 0 && article.translations.some(t => t);
@@ -205,11 +215,20 @@ ${article.text.slice(0, 3000)}`,
       {/* ── 全文閱讀 ── */}
       {viewMode === 'full' && (
         <div>
+          {/* 朗讀全文按鈕 */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <button
+              onClick={speakFullArticle}
+              style={{ padding: '7px 16px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: 13, fontWeight: 500, background: speaking ? 'var(--accent)' : 'var(--bg-secondary)', color: speaking ? '#fff' : 'var(--text-muted)' }}
+            >
+              {speaking ? '⏹ 停止朗讀' : '🔊 朗讀全文'}
+            </button>
+          </div>
+
           <p style={{ lineHeight: 1.9, fontSize: 17, whiteSpace: 'pre-wrap', margin: '0 0 20px' }}>
             {renderWords(article.text)}
           </p>
 
-          {/* 翻譯按鈕 */}
           {hasTranslations ? (
             <>
               <button onClick={() => setShowFullTrans(p => !p)} style={{
@@ -236,7 +255,6 @@ ${article.text.slice(0, 3000)}`,
             </button>
           )}
 
-          {/* 全文句型解析提示 */}
           <p style={{ fontSize: 12, color: 'var(--text-subtle)', marginTop: 8 }}>
             💡 切換到「逐句學習」可逐句解析句型
           </p>
@@ -267,7 +285,7 @@ ${article.text.slice(0, 3000)}`,
                   <p style={{ margin: 0, lineHeight: 1.7, fontSize: 17, flex: 1 }}>{renderWords(s)}</p>
                   <div style={{ display: 'flex', gap: 2, flexShrink: 0, alignItems: 'flex-start' }}>
                     <button
-                      onClick={() => { const u = new SpeechSynthesisUtterance(s); u.lang = 'en-US'; speechSynthesis.speak(u); }}
+                      onClick={() => speak(s)}
                       style={{ ...iconBtn(), fontSize: 14 }}>▶</button>
                     {hasTranslations && (
                       <button onClick={() => setShown(p => p.map((v, j) => j === i ? !v : v))}
@@ -318,7 +336,7 @@ ${article.text.slice(0, 3000)}`,
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {articleChunks.map((chunk, i) => {
                 const expanded = expandedChunks[i];
-                const saved = savedChunkIdxs.has(i);
+                const chunkSaved = savedChunkIdxs.has(i);
                 const STARS = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
                 return (
                   <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-secondary)' }}>
@@ -343,17 +361,26 @@ ${article.text.slice(0, 3000)}`,
                         <p style={{ margin: '0 0 10px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.6 }}>{chunk.why}</p>
                         {chunk.examples.length > 0 && (
                           <div style={{ marginBottom: 12 }}>
+                            <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>例句</p>
                             {chunk.examples.map((ex, j) => (
-                              <p key={j} style={{ margin: '0 0 3px', fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic' }}>• {ex}</p>
+                              <div key={j} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+                                <button
+                                  onClick={() => speak(ex)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: '0 2px', flexShrink: 0, lineHeight: 1.6 }}
+                                >🔊</button>
+                                <p style={{ margin: 0, fontSize: 13, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.6 }}>
+                                  {renderWords(ex)}
+                                </p>
+                              </div>
                             ))}
                           </div>
                         )}
                         <button
-                          onClick={() => !saved && saveArticleChunk(i, chunk)}
-                          disabled={saved}
-                          style={{ padding: '7px 18px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', cursor: saved ? 'default' : 'pointer', background: saved ? 'var(--bg-tertiary)' : 'var(--accent)', color: saved ? 'var(--text-muted)' : '#fff' }}
+                          onClick={() => !chunkSaved && saveArticleChunk(i, chunk)}
+                          disabled={chunkSaved}
+                          style={{ padding: '7px 18px', fontSize: 13, fontWeight: 600, borderRadius: 'var(--radius-sm)', border: 'none', cursor: chunkSaved ? 'default' : 'pointer', background: chunkSaved ? 'var(--bg-tertiary)' : 'var(--accent)', color: chunkSaved ? 'var(--text-muted)' : '#fff' }}
                         >
-                          {saved ? '已收藏' : '加入 Chunk 庫'}
+                          {chunkSaved ? '已收藏' : '加入 Chunk 庫'}
                         </button>
                       </div>
                     )}
@@ -370,63 +397,18 @@ ${article.text.slice(0, 3000)}`,
 
       {/* 單字查詢彈窗 */}
       {(lookup || lookingUp) && (
-        <div style={{ position: 'fixed', bottom: 80, left: 16, right: 16, background: 'var(--bg-secondary)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', boxShadow: '0 8px 32px rgba(0,0,0,0.15)', maxHeight: '60vh', overflowY: 'auto' }}>
-          {lookingUp
-            ? <p style={{ color: 'var(--text-muted)', margin: 0, padding: 16 }}>查詢「{word}」...</p>
-            : lookup && (
-              <div style={{ padding: 16 }}>
-                {/* 單字標題列 */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <strong style={{ fontSize: 20 }}>{word}</strong>
-                    <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 14 }}>{lookup.phonetic}</span>
-                    <button onClick={() => { window.speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(word); u.lang = 'en-US'; u.rate = 0.85; window.speechSynthesis.speak(u); }}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, padding: '0 2px', lineHeight: 1 }}>🔊</button>
-                  </div>
-                  <button onClick={saveWord} disabled={saved.has(word.toLowerCase())}
-                    style={{ background: saved.has(word.toLowerCase()) ? 'var(--bg-tertiary)' : 'var(--accent)', color: saved.has(word.toLowerCase()) ? 'var(--text-muted)' : '#fff', border: 'none', borderRadius: 'var(--radius-sm)', padding: '6px 12px', cursor: 'pointer', fontSize: 13, fontWeight: 500, flexShrink: 0 }}>
-                    {saved.has(word.toLowerCase()) ? '已儲存' : '加入單字庫'}
-                  </button>
-                </div>
-
-                {/* 定義 */}
-                <p style={{ margin: '0 0 12px', fontSize: 16 }}>{lookup.definition}</p>
-
-                {/* 例句區塊 */}
-                <div style={{ background: 'var(--bg-primary)', borderRadius: 8, padding: '10px 12px', marginBottom: 10, borderLeft: '3px solid var(--accent)' }}>
-                  <p style={{ margin: '0 0 4px', fontSize: 15, fontStyle: 'italic', color: 'var(--text-primary)' }}>{lookup.example}</p>
-                  {lookup.example_zh && <p style={{ margin: '0 0 6px', fontSize: 14, color: 'var(--text-muted)' }}>{lookup.example_zh}</p>}
-                  {lookup.example_breakdown && (
-                    <p style={{ margin: 0, fontSize: 13, color: 'var(--accent)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
-                      解析：{lookup.example_breakdown}
-                    </p>
-                  )}
-                </div>
-
-                {/* 常見片語 */}
-                {lookup.phrases?.length > 0 && (
-                  <div style={{ marginBottom: 10 }}>
-                    <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>常見片語</p>
-                    {lookup.phrases.map((ph, i) => (
-                      <p key={i} style={{ margin: '0 0 3px', fontSize: 14, color: 'var(--text-muted)' }}>• {ph}</p>
-                    ))}
-                  </div>
-                )}
-
-                {/* 口語用法 */}
-                {lookup.informal && (
-                  <div>
-                    <p style={{ margin: '0 0 6px', fontSize: 12, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>口語用法</p>
-                    <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>{lookup.informal}</p>
-                  </div>
-                )}
-              </div>
-            )}
-        </div>
+        <WordLookupPanel
+          word={word}
+          lookup={lookup}
+          lookingUp={lookingUp}
+          isSaved={saved.has(word.toLowerCase())}
+          onSave={saveWord}
+          onClose={clear}
+        />
       )}
 
       {toast && (
-        <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: 'var(--accent)', color: '#fff', padding: '10px 20px', borderRadius: 'var(--radius)', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap' }}>
+        <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: 'var(--accent)', color: '#fff', padding: '10px 20px', borderRadius: 'var(--radius)', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', zIndex: 200 }}>
           {toast}
         </div>
       )}

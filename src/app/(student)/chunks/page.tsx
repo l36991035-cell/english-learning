@@ -1,9 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { deleteChunk } from '@/lib/db/chunks';
+import { addVocab, getAllVocab } from '@/lib/db/vocabulary';
 import { useStudent } from '@/context/StudentContext';
+import { useWordLookup } from '@/hooks/useWordLookup';
+import WordLookupPanel from '@/components/WordLookupPanel';
 import type { ChunkRating } from '@/types';
 
 const STARS = (n: number) => '★'.repeat(n) + '☆'.repeat(5 - n);
@@ -27,6 +30,15 @@ export default function ChunksPage() {
   const [filterRating, setFilterRating] = useState<ChunkRating | 'all'>('all');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const [savedWords, setSavedWords] = useState<Set<string>>(new Set());
+  const [toast, setToast] = useState('');
+
+  const { word, lookup, lookingUp, lookupWord, clear } = useWordLookup();
+
+  useEffect(() => {
+    if (!db) return;
+    getAllVocab(db).then(v => setSavedWords(new Set(v.map(e => e.word.toLowerCase()))));
+  }, [db]);
 
   const allChunks = useLiveQuery(
     () => db ? db.chunks.toArray().then(arr => arr.sort((a, b) => b.createdAt - a.createdAt)) : [],
@@ -43,6 +55,28 @@ export default function ChunksPage() {
     }
     return true;
   });
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2500);
+  };
+
+  const saveWord = async () => {
+    if (!word || !lookup || !db) return;
+    await addVocab(db, { word, ...lookup, srsLevel: 0, nextReview: Date.now(), createdAt: Date.now() });
+    setSavedWords(p => new Set([...p, word.toLowerCase()]));
+    showToast(`已加入「${word}」`);
+  };
+
+  const renderWords = useCallback((text: string) =>
+    text.split(/(\s+)/).map((token, i) =>
+      /^\s+$/.test(token) ? token :
+      <span key={i} onClick={() => lookupWord(token)}
+        style={{ cursor: 'pointer', borderRadius: 2, padding: '0 1px' }}
+        onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+      >{token}</span>
+    ), [lookupWord]);
 
   const chip = (active: boolean, color = 'var(--accent)') => ({
     padding: '4px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600,
@@ -74,7 +108,6 @@ export default function ChunksPage() {
         共 {allChunks.length} 個 Chunk
       </p>
 
-      {/* 搜尋 */}
       <input
         value={search}
         onChange={e => setSearch(e.target.value)}
@@ -82,7 +115,6 @@ export default function ChunksPage() {
         style={{ ...inp, marginBottom: 12 }}
       />
 
-      {/* 星級篩選 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         <button onClick={() => setFilterRating('all')} style={chip(filterRating === 'all')}>全部</button>
         {([5, 4, 3, 2, 1] as ChunkRating[]).map(r => (
@@ -142,7 +174,15 @@ export default function ChunksPage() {
                     <div style={{ marginBottom: 8 }}>
                       <p style={{ margin: '0 0 6px', fontSize: 11, fontWeight: 600, color: 'var(--text-subtle)', textTransform: 'uppercase', letterSpacing: 1 }}>例句</p>
                       {c.examples.map((ex, i) => (
-                        <p key={i} style={{ margin: '0 0 3px', fontSize: 14, color: 'var(--text-muted)', fontStyle: 'italic' }}>• {ex}</p>
+                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+                          <button
+                            onClick={() => speak(ex)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: '0 2px', flexShrink: 0, lineHeight: 1.6 }}
+                          >🔊</button>
+                          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)', fontStyle: 'italic', lineHeight: 1.6 }}>
+                            {renderWords(ex)}
+                          </p>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -158,6 +198,24 @@ export default function ChunksPage() {
           );
         })}
       </div>
+
+      {/* 單字查詢彈窗 */}
+      {(lookup || lookingUp) && (
+        <WordLookupPanel
+          word={word}
+          lookup={lookup}
+          lookingUp={lookingUp}
+          isSaved={savedWords.has(word.toLowerCase())}
+          onSave={saveWord}
+          onClose={clear}
+        />
+      )}
+
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', background: 'var(--accent)', color: '#fff', padding: '10px 20px', borderRadius: 'var(--radius)', fontSize: 14, fontWeight: 500, whiteSpace: 'nowrap', zIndex: 200 }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
